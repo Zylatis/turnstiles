@@ -1,3 +1,5 @@
+use std::fs;
+use std::path::PathBuf;
 use std::{
     fs::{File, Metadata, OpenOptions},
     io,
@@ -11,21 +13,43 @@ use std::{
 // So when we boot we have to query the file system to see where
 #[derive(Debug)]
 pub struct RotatingFile {
-    path: String,
+    path: PathBuf,
     rotation: RotationOption,
-    file_index: u32,
     current_file: File,
 }
 
 impl RotatingFile {
     pub fn new(path: &str, rotation: RotationOption) -> Result<Self, std::io::Error> {
-        let file = OpenOptions::new().write(true).append(true).open(path)?;
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(path)?;
         Ok(Self {
-            path: path.to_string(),
+            path: PathBuf::from(path),
             rotation,
-            file_index: 0,
             current_file: file,
         })
+    }
+
+    pub fn rotate_existing_files(&self) {
+        let dir = match self.path.parent() {
+            None => "/",
+            Some(s) => match s.to_str().unwrap() {
+                "" => ".",
+                x => x,
+            },
+        };
+
+        let files = fs::read_dir(&dir).unwrap().map(|x| x.unwrap());
+        let mut log_files = vec![];
+        let prefix = self.path.file_name().unwrap().to_str().unwrap();
+        for f in files {
+            if f.file_name().to_str().unwrap().contains(prefix) {
+                log_files.push(f);
+            }
+        }
+        dbg!(log_files);
     }
 
     fn rotate(&mut self) -> bool {
@@ -72,7 +96,7 @@ mod tests {
 
     #[test]
     fn test() {
-        let file = RotatingFile::new("test.log", RotationOption::SizeMB(1)).unwrap();
-        dbg!(file);
+        let file = RotatingFile::new("logs/test.log", RotationOption::SizeMB(1)).unwrap();
+        file.rotate_existing_files();
     }
 }
