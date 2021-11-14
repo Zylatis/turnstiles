@@ -1,14 +1,12 @@
-use std::cmp;
-use std::fs::{self, DirEntry};
 use std::path::PathBuf;
+use std::{cmp, fs};
 use std::{
-    fs::{File, Metadata, OpenOptions},
+    fs::{DirEntry, File, Metadata, OpenOptions},
     io,
     time::Duration,
 };
 #[derive(Debug)]
 pub struct RotatingFile {
-    // path: PathBuf,
     filename: String,
     parent: PathBuf,
     rotation: RotationOption,
@@ -58,6 +56,10 @@ impl RotatingFile {
         }
         log_files
     }
+
+    pub fn index(&self) -> u32 {
+        self.index
+    }
     fn detect_latest_file_index(path: &PathBuf) -> u32 {
         let log_files = Self::list_log_files(path);
         let mut max_index = 0;
@@ -96,24 +98,6 @@ impl RotatingFile {
             .open(new_file)
             .unwrap();
     }
-    // pub fn rotate_existing_files(&self) {
-    //     let dir = match self.path.parent() {
-    //         None => "/",
-    //         Some(s) => match s.to_str().unwrap() {
-    //             "" => ".",
-    //             x => x,
-    //         },
-    //     };
-    //     let files = fs::read_dir(&dir).unwrap().map(|x| x.unwrap());
-    //     let mut log_files = vec![];
-    //     let prefix = self.path.file_name().unwrap().to_str().unwrap();
-    //     for f in files {
-    //         if f.file_name().to_str().unwrap().contains(prefix) {
-    //             log_files.push(f);
-    //         }
-    //     }
-    //     dbg!(log_files);
-    // }
 
     fn rotate(&mut self) -> bool {
         match self.rotation {
@@ -157,14 +141,41 @@ pub enum RotationOption {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::{
+        fs::{create_dir_all, remove_dir_all},
+        io::Write,
+        thread::sleep,
+        time::Duration,
+    };
 
     use crate::{RotatingFile, RotationOption};
+    const TEMP_FILE: &str = "asdf/test.log";
+    #[test]
+    fn test_file_size() {
+        create_dir_all("asdf/").unwrap();
+        let data: Vec<u8> = vec![0; 1_000_000];
+        let mut file = RotatingFile::new(TEMP_FILE, RotationOption::SizeMB(1)).unwrap();
+        assert!(file.index() == 0);
+        file.write(&data);
+        file.write(&data);
+        assert!(file.index() == 1);
+        file.write(&data);
+        assert!(file.index() == 2);
+        dbg!(file);
+        remove_dir_all("asdf").unwrap();
+    }
 
     #[test]
-    fn test() {
+    fn test_file_duration() {
+        create_dir_all("asdf/").unwrap();
+
         let data: Vec<u8> = vec![0; 1_000_000];
-        let mut file = RotatingFile::new("logs/test.log", RotationOption::SizeMB(1)).unwrap();
+        let mut file =
+            RotatingFile::new(TEMP_FILE, RotationOption::Duration(Duration::from_secs(1))).unwrap();
+        sleep(Duration::from_secs(0));
         file.write(&data);
+        file.write(&data);
+        sleep(Duration::from_secs(1));
+        remove_dir_all("asdf").unwrap();
     }
 }
