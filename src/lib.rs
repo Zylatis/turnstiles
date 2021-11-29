@@ -5,6 +5,7 @@ use std::{
     io,
     time::Duration,
 };
+// mod rng;
 #[derive(Debug)]
 pub struct RotatingFile {
     filename: String,
@@ -141,35 +142,52 @@ pub enum RotationOption {
 
 #[cfg(test)]
 mod tests {
-    const TEMP_FILE: &str = "asdf/test.log";
-    const TEMP_DIR: &str = "asdf/";
-    fn clear_temp_dir() {
-        remove_dir_all(TEMP_DIR).unwrap_or(());
-        create_dir_all(TEMP_DIR).unwrap()
-    }
+    use rand::{distributions::Alphanumeric, thread_rng, Rng};
     use std::{
         fs::{create_dir_all, remove_dir_all},
         io::Write,
+        iter,
         thread::sleep,
         time::Duration,
     };
+    struct TempDir {
+        pub path: String,
+    }
+    impl TempDir {
+        pub fn new() -> Self {
+            let mut rng = thread_rng();
+            let chars: String = iter::repeat(())
+                .map(|()| rng.sample(Alphanumeric))
+                .map(char::from)
+                .take(7)
+                .collect();
+            let path = chars.to_string();
+            create_dir_all(&path).unwrap();
+            Self { path: path }
+        }
+
+        fn clear(&self) {
+            remove_dir_all(&self.path).unwrap_or(());
+        }
+    }
 
     use crate::{RotatingFile, RotationOption};
 
     #[cfg(test)]
-    impl Drop for RotatingFile {
+    impl Drop for TempDir {
         fn drop(&mut self) {
             // This seems highly dangerous, were it to ever be moved out of test it would delete everyones logs
             // Better to specify a temp directory and have it on that drop
-            remove_dir_all(TEMP_DIR).unwrap_or(());
+            self.clear();
         }
     }
 
     #[test]
     fn test_file_size() {
-        clear_temp_dir();
+        let dir = TempDir::new();
+        let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
         let data: Vec<u8> = vec![0; 1_000_000];
-        let mut file = RotatingFile::new(TEMP_FILE, RotationOption::SizeMB(1)).unwrap();
+        let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
         assert!(file.index() == 0);
         file.write(&data).unwrap(); //write 1mb to file
         file.write(&data).unwrap(); //write 1mb to file
@@ -180,14 +198,12 @@ mod tests {
 
     #[test]
     fn test_file_duration() {
-        clear_temp_dir();
+        let dir = TempDir::new();
+        let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
         let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
-        let mut file = RotatingFile::new(
-            TEMP_FILE,
-            RotationOption::Duration(Duration::from_millis(100)),
-        )
-        .unwrap();
+        let mut file =
+            RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
         file.write(&data).unwrap();
         file.write(&data).unwrap();
         sleep(Duration::from_millis(200));
@@ -198,15 +214,13 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_file_duration_delay_fail() {
-        clear_temp_dir();
+        let dir = TempDir::new();
+        let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
         let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
-        let mut file = RotatingFile::new(
-            TEMP_FILE,
-            RotationOption::Duration(Duration::from_millis(100)),
-        )
-        .unwrap();
-        sleep(Duration::from_millis(200)); // the constructor makes the file and so the timer starts from then, this should fail
+        let mut file =
+            RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+        sleep(Duration::from_millis(200)); // the constructor makes the file and so the timer starts from then, this should cause it to fail
         file.write(&data).unwrap();
         file.write(&data).unwrap();
         sleep(Duration::from_millis(200));
