@@ -141,6 +141,12 @@ pub enum RotationOption {
 
 #[cfg(test)]
 mod tests {
+    const TEMP_FILE: &str = "asdf/test.log";
+    const TEMP_DIR: &str = "asdf/";
+    fn clear_temp_dir() {
+        remove_dir_all(TEMP_DIR).unwrap_or(());
+        create_dir_all(TEMP_DIR).unwrap()
+    }
     use std::{
         fs::{create_dir_all, remove_dir_all},
         io::Write,
@@ -149,33 +155,62 @@ mod tests {
     };
 
     use crate::{RotatingFile, RotationOption};
-    const TEMP_FILE: &str = "asdf/test.log";
+
+    #[cfg(test)]
+    impl Drop for RotatingFile {
+        fn drop(&mut self) {
+            // This seems highly dangerous, were it to ever be moved out of test it would delete everyones logs
+            // Better to specify a temp directory and have it on that drop
+            remove_dir_all(TEMP_DIR).unwrap_or(());
+        }
+    }
+
     #[test]
     fn test_file_size() {
-        create_dir_all("asdf/").unwrap();
+        clear_temp_dir();
         let data: Vec<u8> = vec![0; 1_000_000];
         let mut file = RotatingFile::new(TEMP_FILE, RotationOption::SizeMB(1)).unwrap();
         assert!(file.index() == 0);
-        file.write(&data);
-        file.write(&data);
+        file.write(&data).unwrap(); //write 1mb to file
+        file.write(&data).unwrap(); //write 1mb to file
         assert!(file.index() == 1);
-        file.write(&data);
-        assert!(file.index() == 2);
-        dbg!(file);
-        remove_dir_all("asdf").unwrap();
+        file.write(&data).unwrap(); //write 1mb to file
+        assert!(file.index() == 2); // should have 3 files now
     }
 
     #[test]
     fn test_file_duration() {
-        create_dir_all("asdf/").unwrap();
+        clear_temp_dir();
 
-        let data: Vec<u8> = vec![0; 1_000_000];
-        let mut file =
-            RotatingFile::new(TEMP_FILE, RotationOption::Duration(Duration::from_secs(1))).unwrap();
-        sleep(Duration::from_secs(0));
-        file.write(&data);
-        file.write(&data);
-        sleep(Duration::from_secs(1));
-        remove_dir_all("asdf").unwrap();
+        let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
+        let mut file = RotatingFile::new(
+            TEMP_FILE,
+            RotationOption::Duration(Duration::from_millis(100)),
+        )
+        .unwrap();
+        file.write(&data).unwrap();
+        file.write(&data).unwrap();
+        sleep(Duration::from_millis(200));
+        file.write(&data).unwrap();
+        assert!(file.index() == 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_file_duration_delay_fail() {
+        clear_temp_dir();
+
+        let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
+        let mut file = RotatingFile::new(
+            TEMP_FILE,
+            RotationOption::Duration(Duration::from_millis(100)),
+        )
+        .unwrap();
+        sleep(Duration::from_millis(200)); // the constructor makes the file and so the timer starts from then, this should fail
+        file.write(&data).unwrap();
+        file.write(&data).unwrap();
+        sleep(Duration::from_millis(200));
+        file.write(&data).unwrap();
+        assert!(file.index() == 1);
     }
 }
