@@ -1,28 +1,30 @@
-use std::path::PathBuf;
+use anyhow::{bail, Result};
 use std::{cmp, fs};
 use std::{
-    fs::{DirEntry, File, Metadata, OpenOptions},
+    fs::{File, Metadata, OpenOptions},
     io,
     time::Duration,
 };
-// mod rng;
+mod utils;
+use utils::{filename_to_details, safe_unwrap_osstr};
 #[derive(Debug)]
 pub struct RotatingFile {
     filename: String,
-    parent: PathBuf,
+    parent: String,
     rotation: RotationOption,
     current_file: File,
     index: u32,
 }
 
 impl RotatingFile {
-    pub fn new(path_str: &str, rotation: RotationOption) -> Result<Self, std::io::Error> {
-        let path = PathBuf::from(path_str);
-        let mut path_str = path_str.to_owned();
-        let current_index = Self::detect_latest_file_index(&path);
-        if current_index != 0 {
-            path_str += &format!(".{}", current_index);
-        }
+    pub fn new(path_str: &str, rotation: RotationOption) -> Result<Self> {
+        let (path_filename, parent) = filename_to_details(path_str)?;
+        let current_index = Self::detect_latest_file_index(&path_filename, &parent)?;
+        let filename = if current_index != 0 {
+            format!("{}.{}", path_filename, current_index)
+        } else {
+            path_filename
+        };
 
         let file = OpenOptions::new()
             .create(true)
@@ -33,88 +35,71 @@ impl RotatingFile {
             rotation,
             current_file: file,
             index: current_index,
-            filename: path.file_name().unwrap().to_str().unwrap().to_string(),
-            parent: path.parent().unwrap().to_path_buf(),
+            filename,
+            parent,
         })
     }
 
-    fn list_log_files(path: &PathBuf) -> Vec<DirEntry> {
-        let dir = match path.parent() {
-            None => "/",
-            Some(s) => match s.to_str().unwrap() {
-                "" => ".",
-                s => s,
-            },
-        };
-
-        let files = fs::read_dir(&dir).unwrap().map(|x| x.unwrap());
+    fn list_log_files(filename: &String, path: &String) -> Result<Vec<String>> {
+        let files = fs::read_dir(&path)?;
         let mut log_files = vec![];
-        let prefix = path.file_name().unwrap().to_str().unwrap();
         for f in files {
-            if f.file_name().to_str().unwrap().contains(prefix) {
-                log_files.push(f);
+            let filename_str = safe_unwrap_osstr(&f?.file_name())?;
+            if filename_str.contains(filename) {
+                log_files.push(filename_str);
             }
         }
-        log_files
+        Ok(log_files)
     }
 
     pub fn index(&self) -> u32 {
         self.index
     }
-    fn detect_latest_file_index(path: &PathBuf) -> u32 {
-        let log_files = Self::list_log_files(path);
+    fn detect_latest_file_index(filename: &String, path: &String) -> Result<u32> {
+        let log_files = Self::list_log_files(filename, path).unwrap();
         let mut max_index = 0;
-        for f in log_files {
-            // JFC...
-            let fname = f.file_name();
-            let i_str = fname
-                .to_str()
-                .unwrap()
-                .to_string()
-                .replace(path.file_name().unwrap().to_str().unwrap(), "");
-            let i_str = i_str.split(".").clone().last().clone().unwrap();
-
-            if i_str == "" {
+        for filename_string in log_files {
+            let file_index = match filename_string.split(".").last() {
+                None => bail!("Found log file ending in '.', can't process index."),
+                Some(s) => s,
+            };
+            if file_index == "" {
                 continue;
             } else {
-                let i = i_str.parse::<u32>().unwrap();
+                let i = file_index.parse::<u32>()?;
                 max_index = cmp::max(i, max_index);
             }
         }
-        max_index
+        Ok(max_index)
     }
 
-    fn rotate_current_file(&mut self) {
+    fn rotate_current_file(&mut self) -> Result<(), std::io::Error> {
         self.index += 1;
-        let new_file = &format!(
-            "{}/{}.{}",
-            self.parent.to_str().unwrap(),
-            self.filename,
-            self.index
-        );
+        let new_file = &format!("{}/{}.{}", self.parent, self.filename, self.index);
         self.current_file = OpenOptions::new()
             .create(true)
             .write(true)
             .append(true)
-            .open(new_file)
-            .unwrap();
+            .open(new_file)?;
+        Ok(())
     }
 
-    fn rotate(&mut self) -> bool {
-        match self.rotation {
+    fn rotate(&mut self) -> Result<bool, std::io::Error> {
+        let rotate = match self.rotation {
             RotationOption::None => false,
-            RotationOption::SizeMB(size) => self.file_metadata().unwrap().len() * 1_000_000 > size,
+            RotationOption::SizeMB(size) => self.file_metadata()?.len() * 1_000_000 > size,
             // RotationOption::SizeLines(len) => false,
             RotationOption::Duration(duration) => {
-                self.file_metadata()
-                    .unwrap()
-                    .created()
-                    .unwrap()
-                    .elapsed()
-                    .unwrap()
-                    > duration
+                match self.file_metadata()?.created()?.elapsed() {
+                    Ok(elapsed) => elapsed > duration,
+                    Err(e) => {
+                        println!("Warning: failed to determine time since log file created, got error {}. Rotating anyway as a precaution.", e);
+                        true
+                    }
+                }
             }
-        }
+        };
+        Ok(rotate)
     }
     fn file_metadata(&self) -> Result<Metadata, std::io::Error> {
         self.current_file.sync_all()?;
@@ -123,8 +108,8 @@ impl RotatingFile {
 }
 impl io::Write for RotatingFile {
     fn write(&mut self, bytes: &[u8]) -> Result<usize, std::io::Error> {
-        if self.rotate() {
-            self.rotate_current_file();
+        if self.rotate()? {
+            self.rotate_current_file()?;
         }
         self.current_file.write(bytes)
     }
