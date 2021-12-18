@@ -75,7 +75,7 @@ impl RotatingFile {
 
     /// Given a filename stem and folder path, list all files which contain the filename stem.
     /// Note: this currently literally does a .contains() check rather than verifying more carefully, but this a TODO.
-    fn list_log_files(filename: &String, folder_path: &String) -> Result<Vec<String>> {
+    fn list_log_files(filename: &str, folder_path: &str) -> Result<Vec<String>> {
         let files = fs::read_dir(&folder_path)?;
         let mut log_files = vec![];
         for f in files {
@@ -92,15 +92,15 @@ impl RotatingFile {
         self.index
     }
     /// Given a filename stem and folder path find the highest index so where know where to pick up after we left off in a previous incarnation
-    fn detect_latest_file_index(filename: &String, folder_path: &String) -> Result<u32> {
+    fn detect_latest_file_index(filename: &str, folder_path: &str) -> Result<u32> {
         let log_files = Self::list_log_files(filename, folder_path).unwrap();
         let mut max_index = 0;
         for filename_string in log_files {
-            let file_index = match filename_string.split(".").last() {
+            let file_index = match filename_string.split('.').last() {
                 None => bail!("Found log file ending in '.', can't process index."),
                 Some(s) => s,
             };
-            if file_index == "" {
+            if file_index.is_empty() {
                 continue;
             } else {
                 let i = file_index.parse::<u32>()?;
