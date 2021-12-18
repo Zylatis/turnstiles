@@ -1,6 +1,6 @@
 # Turnstiles
 
-A WIP library which wraps the `io::Write` trait to enable file rotation i.e. for logs.
+A WIP library which wraps the `io::Write` trait to enable file rotation i.e. for logs. The goal is to enable file rotation at the file handle level and do so with as few dependencies as possible.
 
 Implemented/planned rotation conditions:
 - [x] None (never rotate)
@@ -36,4 +36,4 @@ file.write(&some_bytes).expect("Failed to write bytes to file");
 ```
 
 ## Why `turnstiles`?
-It's a metal thing that rotates, and also the name of the Billy Joel album which has [`Summer Highland Falls`](https://youtu.be/ygNNpvzuNFA) on it, one of my favourite songs.
+It's a metal thing that rotates, and also the name of the Billy Joel album which has [`Summer, Highland Falls`](https://youtu.be/WsNhuJypNjM) on it, one of my favourite songs.
