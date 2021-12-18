@@ -8,6 +8,11 @@ Implemented/planned rotation conditions:
 - [x] Duration (time since last modified)
 - [ ] SizeLines (number of lines in file) 
 
+## Note:
+Currently this library only supports rotation by creating new files when a rotation is required, rather than renaming existing files.
+For example if "my_file.log" is given then when the first rotation occurs this will be renamed "my_file.log.1". This means the latest file has the highest
+index, not the original filename. This is done to minimize surface area with the filesystem but is part of the future work.
+
 # Examples
 Rotate when a log file exceeds a certain filesize
 
