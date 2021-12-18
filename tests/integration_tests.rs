@@ -1,6 +1,6 @@
 use std::{io::Write, thread::sleep, time::Duration};
 
-use turnstyles::{RotatingFile, RotationOption};
+use turnstiles::{RotatingFile, RotationOption};
 mod common;
 use common::TempDir;
 #[test]
