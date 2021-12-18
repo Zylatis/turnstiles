@@ -1,4 +1,4 @@
-# Turnstyles
+# Turnstiles
 
 A WIP library which wraps the `io::Write` trait to enable file rotation i.e. for logs.
 
@@ -34,3 +34,6 @@ let mut log_file =
     .expect("failed to create RotatingFile");
 file.write(&some_bytes).expect("Failed to write bytes to file");
 ```
+
+## Why `turnstiles`?
+It's a metal thing that rotates, and also the name of the Billy Joel album which has [`Summer Highland Falls`](https://youtu.be/ygNNpvzuNFA) on it, one of my favourite songs.
