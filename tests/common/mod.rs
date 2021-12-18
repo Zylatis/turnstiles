@@ -19,9 +19,9 @@ impl TempDir {
             .map(char::from)
             .take(7)
             .collect();
-        let path = chars.to_string();
+        let path = chars;
         create_dir_all(&path).unwrap();
-        Self { path: path }
+        Self { path }
     }
 
     fn clear(&self) {

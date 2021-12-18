@@ -1,3 +1,4 @@
+#![warn(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 /*!
 Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done.
 Currently this library only supports rotation by creating new files when a rotation is required, rather than renaming existing files.
@@ -93,7 +94,7 @@ impl RotatingFile {
     }
     /// Given a filename stem and folder path find the highest index so where know where to pick up after we left off in a previous incarnation
     fn detect_latest_file_index(filename: &str, folder_path: &str) -> Result<u32> {
-        let log_files = Self::list_log_files(filename, folder_path).unwrap();
+        let log_files = Self::list_log_files(filename, folder_path)?;
         let mut max_index = 0;
         for filename_string in log_files {
             let file_index = match filename_string.split('.').last() {
