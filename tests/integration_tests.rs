@@ -1,8 +1,9 @@
 use std::{io::Write, thread::sleep, time::Duration};
 
+use tempdir::TempDir;
 use turnstiles::{RotatingFile, RotationOption};
-mod common;
-use common::TempDir;
+
+// Duplicated by doctests but i think that's okay? These have fn names, easier to interpret if failing...
 #[test]
 fn test_file_size() {
     let dir = TempDir::new();

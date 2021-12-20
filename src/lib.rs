@@ -9,22 +9,42 @@ index, not the original filename. This is done to minimize surface area with the
 Rotate when a log file exceeds a certain filesize
 
 ```
-let some_bytes: Vec<u8> = vec![0; 1_000_000];
-let mut log_file =
-    RotatingFile::new("logs/super_important_service.log", RotationOption::SizeMB(500))
-    .expect("failed to create RotatingFile");
-file.write(&some_bytes).expect("Failed to write bytes to file");
+use std::{io::Write, thread::sleep, time::Duration};
+use turnstiles::{RotatingFile, RotationOption};
+
+use tempdir::TempDir; // Subcrate provided for testing
+let dir = TempDir::new();
+
+let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+let data: Vec<u8> = vec![0; 1_000_000];
+let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
+assert!(file.index() == 0);
+file.write_all(&data).unwrap(); //write 1mb to file
+file.write_all(&data).unwrap(); //write 1mb to file
+assert!(file.index() == 1);
+file.write_all(&data).unwrap(); //write 1mb to file
+assert!(file.index() == 2); // should have 3 files now
 ```
 
 Rotate when a log file is too old (based on filesystem metadata timestamps)
 
 ```
-let max_log_age = Duration::from_secs(3600);
-let some_bytes: Vec<u8> = vec![0; 10_000_000];
-let mut log_file =
-    RotatingFile::new("logs/super_important_service.log", RotationOption::Duration(max_log_age))
-    .expect("failed to create RotatingFile");
-file.write(&some_bytes).expect("Failed to write bytes to file");
+use std::{io::Write, thread::sleep, time::Duration};
+use turnstiles::{RotatingFile, RotationOption};
+
+use tempdir::TempDir; // Subcrate provided for testing
+let dir = TempDir::new();
+
+let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+
+let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
+let mut file =
+    RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+file.write_all(&data).unwrap();
+file.write_all(&data).unwrap();
+sleep(Duration::from_millis(200));
+file.write_all(&data).unwrap();
+assert!(file.index() == 1);
 ```
 
 

@@ -9,7 +9,4 @@ edition = "2021"
 anyhow = "1.0"
 
 [dev-dependencies]
-rand = "0.8"
-
-[lib]
-doctest = false
+tempdir = {path = "tempdir", version = "0.1.0"}
