@@ -38,7 +38,8 @@ file.write(&some_bytes).expect("Failed to write bytes to file");
 ```
 
 ## Future work
-More direct integration with dedicated logging libraries, i.e. `impl log::Log`.
+- More direct integration with dedicated logging libraries, i.e. `impl log::Log`.
+- Investigate integration with things like [`atomicwrites`](https://crates.io/crates/atomicwrites)
 
 ## Why `turnstiles`?
 It's a metal thing that rotates, and also the name of the Billy Joel album which has [`Summer, Highland Falls`](https://youtu.be/WsNhuJypNjM) on it, one of my favourite songs.
