@@ -2,7 +2,7 @@
 /*!
 Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done.
 Currently this library only supports rotation by creating new files when a rotation is required, rather than renaming existing files.
-For example if `my_file.log` is given then when the first rotation occurs a file with the name `my_file.log.1` will be created and written to.
+For example if `my_file.log` is given then when the first rotation occurs a file with the name `my_file.log.0` will be created and written to.
 This means the latest file has the highest index, not the original filename. This is done to minimize surface area with the filesystem, but it
 is part of future work to potentially include the case where `my_file.log` is always the latest.
 
