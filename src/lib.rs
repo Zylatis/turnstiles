@@ -134,13 +134,13 @@ impl RotatingFile {
 
     /// Perform file rotation
     fn rotate_current_file(&mut self) -> Result<(), std::io::Error> {
-        self.index += 1;
         let new_file = &format!("{}/{}.{}", self.parent, self.filename, self.index);
         self.current_file = OpenOptions::new()
             .create(true)
             .write(true)
             .append(true)
             .open(new_file)?;
+        self.index += 1;
         Ok(())
     }
 
