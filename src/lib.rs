@@ -47,8 +47,6 @@ sleep(Duration::from_millis(200));
 file.write_all(&data).unwrap();
 assert!(file.index() == 1);
 ```
-
-
 */
 use anyhow::{bail, Result};
 use std::{cmp, fs};
@@ -59,6 +57,7 @@ use std::{
 };
 mod utils;
 use utils::{filename_to_details, safe_unwrap_osstr};
+
 #[derive(Debug)]
 /// Struct masquerades as a file handle and is written to by whatever you like
 pub struct RotatingFile {
@@ -75,8 +74,10 @@ impl RotatingFile {
     pub fn new(path_str: &str, rotation: RotationOption) -> Result<Self> {
         let (path_filename, parent) = filename_to_details(path_str)?;
         let current_index = Self::detect_latest_file_index(&path_filename, &parent)?;
+        // We record the index internally as representing the index of the set of rotated files, but for human readibility and sanity
+        // we want the first rotated file to be suffixed .1 not .0 so we cook the books here a bit. This was broken in <= 0.1.2, sorry!
         let filename = if current_index != 0 {
-            format!("{}.{}", path_filename, current_index)
+            format!("{}.{}", path_filename, current_index + 1)
         } else {
             path_filename
         };
@@ -136,13 +137,13 @@ impl RotatingFile {
     fn rotate_current_file(&mut self) -> Result<(), std::io::Error> {
         // TODO: think about if we want to be more careful here, i.e. append to a random file which may already exist and be a totally different format?
         // Could throw an exception, or print a warning and skip that file index. Who logs the loggers...
-        let new_file = &format!("{}/{}.{}", self.parent, self.filename, self.index);
+        let new_file = &format!("{}/{}.{}", self.parent, self.filename, self.index + 1);
         self.current_file = OpenOptions::new()
             .create(true)
             .write(true)
             .append(true)
             .open(new_file)?;
-        self.index += 1; // Only do this once the above results have passed
+        self.index += 1; // Only do this once the above results have passed.
         Ok(())
     }
 

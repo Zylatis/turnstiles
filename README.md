@@ -11,6 +11,9 @@ Implemented/planned rotation conditions:
 - [x] Duration (time since last modified)
 - [ ] SizeLines (number of lines in file) 
 
+## Warning:
+This is currently in active development and may change/break often. Every effort will be taken to ensure that the changes that occur are reflected in the semver of the package, both in terms of the API and the generation of log files.
+
 ## Note:
 Currently this library only supports rotation by creating new files when a rotation is required, rather than creating a new file _and_ renaming existing files.
 For example if `my_file.log` is given then when the first rotation occurs a file with the name `my_file.log.1` will be created and written to. This means the latest file has the highest index, not the original filename. This is done to minimize surface area with the filesystem, but it is part of future work to potentially include the case where `my_file.log` is always the latest.
