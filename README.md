@@ -1,5 +1,7 @@
 # Turnstiles
 
+![example workflow](https://github.com/Zylatis/turnstiles/actions/workflows/rust.yml/badge.svg)
+
 A WIP library which wraps the `io::Write` trait to enable file rotation i.e. for logs. The goal is to enable file rotation at the file handle level and do so with as few dependencies as possible.
 
 Implemented/planned rotation conditions:
