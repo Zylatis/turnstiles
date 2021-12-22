@@ -7,6 +7,8 @@ edition = "2021"
 license = "MIT"
 homepage = "https://github.com/Zylatis/turnstiles"
 repository = "https://github.com/Zylatis/turnstiles"
+keywords = ["log", "logging", "rotation"]
+categories = ["development-tools::debugging", "filesystem"]
 
 [dependencies]
 anyhow = "1.0"
