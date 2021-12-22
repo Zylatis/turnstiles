@@ -49,3 +49,33 @@ fn test_file_duration_delay_fail() {
     file.write_all(&data).unwrap();
     assert!(file.index() == 1);
 }
+
+#[test]
+#[should_panic]
+/// Try to write to non-existent directory, should fail
+fn test_no_dir_simple() {
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    drop(dir);
+
+    let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
+    let mut file =
+        RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+    file.write_all(&data).unwrap();
+}
+
+#[test]
+#[should_panic]
+/// Delete directory after initial write, should fail to write again
+fn test_no_dir_intermediate() {
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+
+    let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
+    let mut file =
+        RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+    file.write_all(&data).unwrap();
+    sleep(Duration::from_millis(200));
+    drop(dir);
+    file.write_all(&data).unwrap();
+}

@@ -134,13 +134,15 @@ impl RotatingFile {
 
     /// Perform file rotation
     fn rotate_current_file(&mut self) -> Result<(), std::io::Error> {
+        // TODO: think about if we want to be more careful here, i.e. append to a random file which may already exist and be a totally different format?
+        // Could throw an exception, or print a warning and skip that file index. Who logs the loggers...
         let new_file = &format!("{}/{}.{}", self.parent, self.filename, self.index);
         self.current_file = OpenOptions::new()
             .create(true)
             .write(true)
             .append(true)
             .open(new_file)?;
-        self.index += 1;
+        self.index += 1; // Only do this once the above results have passed
         Ok(())
     }
 
