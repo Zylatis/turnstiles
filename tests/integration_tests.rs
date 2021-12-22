@@ -92,19 +92,19 @@ fn test_data_integrity() {
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
     let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
-    // assert!(file.index() == 0);
+
     file.write_all(&vec![0; 1_000_001]).unwrap(); //write 1mb to file
     file.write_all(&vec![1; 1_000_001]).unwrap(); //write 1mb to file
-                                                  // assert!(file.index() == 1);
+    assert!(file.index() == 1);
     file.write_all(&vec![2; 1_000_001]).unwrap(); //write 1mb to file
-                                                  // assert!(file.index() == 2); // should have 3 files now
+    assert!(file.index() == 2); // should have 3 files now
 
     // Original data
     let data = fs::read(path).unwrap();
     assert_eq!(data, vec![0; 1_000_001]);
     // Rotated portions
     for i in 0..2 {
-        let data = fs::read(format!("{}.{}", path, i + 1)).unwrap();
+        let data = fs::read(format!("{}.{}", path, i)).unwrap();
         assert_eq!(data, vec![i + 1; 1_000_001]);
     }
 }
