@@ -1,9 +1,12 @@
 [package]
 name = "turnstiles"
-version = "0.1.0"
+version = "0.1.1"
+authors = ["Graeme Gossel <graeme.gossel@gmail.com>"]
+description = "Seamless file rotation"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
+homepage = "https://github.com/Zylatis/turnstiles"
+repository = "https://github.com/Zylatis/turnstiles"
 
 [dependencies]
 anyhow = "1.0"
