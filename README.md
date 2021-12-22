@@ -16,7 +16,11 @@ This is currently in active development and may change/break often. Every effort
 
 ## Note:
 Currently this library only supports rotation by creating new files when a rotation is required, rather than creating a new file _and_ renaming existing files.
-For example if `my_file.log` is given then when the first rotation occurs a file with the name `my_file.log.1` will be created and written to. This means the latest file has the highest index, not the original filename. This is done to minimize surface area with the filesystem, but it is part of future work to potentially include the case where `my_file.log` is always the latest.
+For example if `my_file.log` is given then when the first rotation occurs a file with the name `my_file.log.0` will be created and written to. This means the latest file has the highest index, not the original filename. This is done to minimize surface area with the filesystem, but it is part of future work to potentially include the case where `my_file.log` is always the latest. 
+
+The zero indexing on the rotated files superficially seems not great for savannah-ape brains, but it has the advantage of 
+- simplicity
+- unambiguousness-ness: it's very clear you have the original file `my_file.log`, and a new set of files with a counter starting at 0 so there is no doubt if there are gaps or not.
 
 # Examples
 Rotate when a log file exceeds a certain filesize
