@@ -52,9 +52,10 @@ use tempdir::TempDir; // Subcrate provided for testing
  let dir = TempDir::new();
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
-let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
+let max_log_age = Duration::from_millis(100);
+let data: Vec<u8> = vec![0; 1_000_000];
 let mut file =
-    RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+    RotatingFile::new(path, RotationOption::Duration(max_log_age)).unwrap();
 
 assert!(file.index() == 0);
 file.write_all(&data).unwrap();
@@ -66,7 +67,7 @@ sleep(Duration::from_millis(200));
 // Rotation only happens when we call .write() so index remains unchanged after this duration
 // even though it exceeds that given in the RotationOption
 assert!(file.index() == 0);
-// Bit touch and go but assuming two writes of 100k bytes doesn't take 100ms!
+// Bit touch and go but assuming two writes of 1mb bytes doesn't take 100ms!
 file.write_all(&data).unwrap();
 assert!(file.index() == 1);
 file.write_all(&data).unwrap();

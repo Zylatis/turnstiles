@@ -49,11 +49,27 @@ Rotate when a log file is too old (based on filesystem metadata timestamps)
 
 ```rust
 let max_log_age = Duration::from_secs(3600);
-let some_bytes: Vec<u8> = vec![0; 10_000_000];
-let mut log_file =
-    RotatingFile::new("logs/super_important_service.log", RotationOption::Duration(max_log_age))
-    .expect("failed to create RotatingFile");
-file.write(&some_bytes).expect("Failed to write bytes to file");
+let data: Vec<u8> = vec![0; 1_000_000];
+let mut file =
+    RotatingFile::new(path, RotationOption::Duration(max_log_age)).unwrap();
+
+assert!(file.index() == 0);
+file.write_all(&data).unwrap();
+assert!(file.index() == 0);
+file.write_all(&data).unwrap();
+assert!(file.index() == 0);
+sleep(Duration::from_millis(200));
+
+// Rotation only happens when we call .write() so index remains unchanged after this duration
+// even though it exceeds that given in the RotationOption
+assert!(file.index() == 0);
+// Bit touch and go but assuming two writes of 100k bytes doesn't take 100ms!
+file.write_all(&data).unwrap();
+assert!(file.index() == 1);
+file.write_all(&data).unwrap();
+assert!(file.index() == 1);
+
+// Will now have test.log and test.log.1
 ```
 
 ## Future work
