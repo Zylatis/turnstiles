@@ -168,6 +168,53 @@ fn test_data_integrity() {
     );
 }
 
+#[test]
+fn test_restart() {
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let data: Vec<u8> = vec![0; 600_000];
+    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
+
+    file.write_all(&data).unwrap();
+
+    assert!(file.index() == 0);
+    file.write_all(&data).unwrap();
+    assert!(file.index() == 0);
+
+    file.write_all(&data).unwrap();
+    assert!(file.index() == 1);
+    file.write_all(&data).unwrap();
+    assert!(file.index() == 1);
+    assert_correct_files(
+        &dir.path,
+        vec!["test.log".to_string(), "test.log.1".to_string()],
+    );
+    // Start again and make sure we pickup where we left off
+    drop(file);
+    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
+
+    file.write_all(&data).unwrap();
+
+    assert!(file.index() == 2);
+    file.write_all(&data).unwrap();
+    assert!(file.index() == 2);
+
+    file.write_all(&data).unwrap();
+    assert!(file.index() == 3);
+    file.write_all(&data).unwrap();
+    assert!(file.index() == 3);
+
+    assert_correct_files(
+        &dir.path,
+        vec![
+            "test.log".to_string(),
+            "test.log.1".to_string(),
+            "test.log.2".to_string(),
+            "test.log.3".to_string(),
+        ],
+    );
+}
+
 fn get_dir_files_hashset(dir: &str) -> HashSet<String> {
     let mut files = HashSet::new();
     for file in fs::read_dir(dir).unwrap() {
