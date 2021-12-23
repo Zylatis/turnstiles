@@ -1,11 +1,4 @@
-use std::{
-    collections::HashSet,
-    fs,
-    hash::{self, Hash},
-    io::Write,
-    thread::sleep,
-    time::Duration,
-};
+use std::{collections::HashSet, fs, io::Write, thread::sleep, time::Duration};
 
 use tempdir::TempDir;
 use turnstiles::{RotatingFile, RotationOption};

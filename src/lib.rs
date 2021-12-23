@@ -34,6 +34,8 @@ assert!(file.index() == 0);
 file.write_all(&data).unwrap();
 // Now after writing again we're > 1mb so we have a new file
 assert!(file.index() == 1);
+// Will now have test.log and test.log.1
+
 ```
 
 Rotate when a log file is too old (based on filesystem metadata timestamps)
@@ -43,14 +45,16 @@ use std::{io::Write, thread::sleep, time::Duration};
 use turnstiles::{RotatingFile, RotationOption};
 
 use tempdir::TempDir; // Subcrate provided for testing
-let dir = TempDir::new();
-
+ let dir = TempDir::new();
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
 let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
 let mut file =
-RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+    RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+
+assert!(file.index() == 0);
 file.write_all(&data).unwrap();
+assert!(file.index() == 0);
 file.write_all(&data).unwrap();
 assert!(file.index() == 0);
 sleep(Duration::from_millis(200));
@@ -58,10 +62,13 @@ sleep(Duration::from_millis(200));
 // Rotation only happens when we call .write() so index remains unchanged after this duration even though it exceeds
 // that given in the RotationOption
 assert!(file.index() == 0);
+// Bit touch and go but assuming two writes of 100k bytes doesn't take 100ms!
 file.write_all(&data).unwrap();
 assert!(file.index() == 1);
 file.write_all(&data).unwrap();
 assert!(file.index() == 1);
+
+// Will now have test.log and test.log.1
 ```
 */
 use anyhow::{bail, Result};
