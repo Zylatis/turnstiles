@@ -101,12 +101,12 @@ impl RotatingFile {
         } else {
             path_filename
         };
-        let current_file_path = format!("{}/{}", parent, current_filename.clone());
+        let current_file_path = format!("{}/{}", parent, current_filename);
         let file = OpenOptions::new()
             .create(true)
             .write(true)
             .append(true)
-            .open(current_file_path.clone())?;
+            .open(current_file_path)?;
         Ok(Self {
             rotation,
             current_file: file,
