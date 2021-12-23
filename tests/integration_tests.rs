@@ -11,7 +11,7 @@ fn test_file_size() {
     let data: Vec<u8> = vec![0; 500_000];
     let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
 
-    file.write(&data).unwrap(); // write 500k to file
+    file.write_all(&data).unwrap(); // write 500k to file
 
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
