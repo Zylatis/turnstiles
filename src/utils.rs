@@ -7,6 +7,7 @@ pub fn filename_to_details(path_str: &str) -> Result<(String, String)> {
         None => bail!("Could not get filename"),
         Some(f_osstr) => safe_unwrap_osstr(f_osstr)?,
     };
+
     let parent = match pathbuf.parent() {
         None => "/",
         Some(s) => match s.to_str() {

@@ -17,14 +17,24 @@ use tempdir::TempDir; // Subcrate provided for testing
 let dir = TempDir::new();
 
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
-let data: Vec<u8> = vec![0; 1_000_000];
+let data: Vec<u8> = vec![0; 500_000];
 let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
+file.write(&data).unwrap(); // write 500k to file
+// Start at index zero
 assert!(file.index() == 0);
-file.write_all(&data).unwrap(); //write 1mb to file
-file.write_all(&data).unwrap(); //write 1mb to file
+file.write_all(&data).unwrap();
+
+// Still at index zero because file size on disk is 500k
+assert!(file.index() == 0);
+
+file.write_all(&data).unwrap();
+// Still at index zero because file size on disk is 1mb and the check is > not >=
+assert!(file.index() == 0);
+
+file.write_all(&data).unwrap();
+// Now after writing again we're > 1mb so we have a new file
 assert!(file.index() == 1);
-file.write_all(&data).unwrap(); //write 1mb to file
-assert!(file.index() == 2); // should have 3 files now
+
 ```
 
 Rotate when a log file is too old (based on filesystem metadata timestamps)
@@ -40,10 +50,17 @@ let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
 let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
 let mut file =
-    RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
 file.write_all(&data).unwrap();
 file.write_all(&data).unwrap();
+assert!(file.index() == 0);
 sleep(Duration::from_millis(200));
+
+// Rotation only happens when we call .write() so index remains unchanged after this duration even though it exceeds
+// that given in the RotationOption
+assert!(file.index() == 0);
+file.write_all(&data).unwrap();
+assert!(file.index() == 1);
 file.write_all(&data).unwrap();
 assert!(file.index() == 1);
 ```
@@ -61,8 +78,7 @@ use utils::{filename_to_details, safe_unwrap_osstr};
 #[derive(Debug)]
 /// Struct masquerades as a file handle and is written to by whatever you like
 pub struct RotatingFile {
-    filename: String,
-    parent: String,
+    filename_root: String,
     rotation: RotationOption,
     current_file: File,
     index: u32,
@@ -74,24 +90,22 @@ impl RotatingFile {
     pub fn new(path_str: &str, rotation: RotationOption) -> Result<Self> {
         let (path_filename, parent) = filename_to_details(path_str)?;
         let current_index = Self::detect_latest_file_index(&path_filename, &parent)?;
-
-        let filename = if current_index != 0 {
+        let current_filename = if current_index != 0 {
             format!("{}.{}", path_filename, current_index)
         } else {
             path_filename
         };
-
+        let current_file_path = format!("{}/{}", parent, current_filename.clone());
         let file = OpenOptions::new()
             .create(true)
             .write(true)
             .append(true)
-            .open(path_str)?;
+            .open(current_file_path.clone())?;
         Ok(Self {
             rotation,
             current_file: file,
             index: current_index,
-            filename,
-            parent,
+            filename_root: path_str.to_string(),
         })
     }
 
@@ -118,13 +132,14 @@ impl RotatingFile {
         let log_files = Self::list_log_files(filename, folder_path)?;
         let mut max_index = 0;
         for filename_string in log_files {
-            let file_index = match filename_string.split('.').last() {
-                None => bail!("Found log file ending in '.', can't process index."),
-                Some(s) => s,
-            };
-            if file_index.is_empty() {
+            if filename_string == filename {
                 continue;
             } else {
+                let file_index = match filename_string.split('.').last() {
+                    None => bail!("Found log file ending in '.', can't process index."),
+                    Some(s) => s,
+                };
+
                 let i = file_index.parse::<u32>()?;
                 max_index = cmp::max(i, max_index);
             }
@@ -136,7 +151,7 @@ impl RotatingFile {
     fn rotate_current_file(&mut self) -> Result<(), std::io::Error> {
         // TODO: think about if we want to be more careful here, i.e. append to a random file which may already exist and be a totally different format?
         // Could throw an exception, or print a warning and skip that file index. Who logs the loggers...
-        let new_file = &format!("{}/{}.{}", self.parent, self.filename, self.index);
+        let new_file = &format!("{}.{}", self.filename_root, self.index);
         self.current_file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -152,7 +167,7 @@ impl RotatingFile {
     fn rotation_required(&mut self) -> Result<bool, std::io::Error> {
         let rotate = match self.rotation {
             RotationOption::None => false,
-            RotationOption::SizeMB(size) => self.file_metadata()?.len() * 1_000_000 > size,
+            RotationOption::SizeMB(size) => self.file_metadata()?.len() > size * 1_000_000,
             // RotationOption::SizeLines(len) => false,
             RotationOption::Duration(duration) => {
                 match self.file_metadata()?.created()?.elapsed() {
