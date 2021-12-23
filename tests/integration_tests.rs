@@ -1,4 +1,11 @@
-use std::{io::Write, thread::sleep, time::Duration};
+use std::{
+    collections::HashSet,
+    fs,
+    hash::{self, Hash},
+    io::Write,
+    thread::sleep,
+    time::Duration,
+};
 
 use tempdir::TempDir;
 use turnstiles::{RotatingFile, RotationOption};
@@ -21,6 +28,10 @@ fn test_file_size() {
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 1);
+    assert_correct_files(
+        &dir.path,
+        vec!["test.log".to_string(), "test.log.1".to_string()],
+    );
 }
 
 #[test]
@@ -36,6 +47,10 @@ fn test_file_size_no_rotate() {
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 0);
+    assert_correct_files(
+        &dir.path,
+        vec!["test.log".to_string(), "test.log".to_string()],
+    );
 }
 
 #[test]
@@ -62,6 +77,23 @@ fn test_file_duration() {
     assert!(file.index() == 1);
     file.write_all(&data).unwrap();
     assert!(file.index() == 1);
+
+    sleep(Duration::from_millis(200));
+    assert!(file.index() == 1);
+    // Bit touch and go but assuming two writes of 100k bytes doesn't take 100ms!
+    file.write_all(&data).unwrap();
+    assert!(file.index() == 2);
+    file.write_all(&data).unwrap();
+    assert!(file.index() == 2);
+
+    assert_correct_files(
+        &dir.path,
+        vec![
+            "test.log".to_string(),
+            "test.log.1".to_string(),
+            "test.log.2".to_string(),
+        ],
+    );
 }
 
 #[test]
@@ -135,6 +167,25 @@ fn test_data_integrity() {
     let data = fs::read(path).unwrap();
     assert_eq!(data, vec![0; 1_200_000]);
     // Rotated data
-    let data = fs::read(format!("{}.0", path)).unwrap();
+    let data = fs::read(format!("{}.1", path)).unwrap();
     assert_eq!(data, vec![1; 600_000]);
+    assert_correct_files(
+        &dir.path,
+        vec!["test.log".to_string(), "test.log.1".to_string()],
+    );
+}
+
+fn get_dir_files_hashset(dir: &str) -> HashSet<String> {
+    let mut files = HashSet::new();
+    for file in fs::read_dir(dir).unwrap() {
+        let filename = file.unwrap().file_name().to_str().unwrap().to_string();
+        files.insert(filename);
+    }
+    files
+}
+
+fn assert_correct_files(dir: &str, log_filenames: Vec<String>) {
+    let log_files = get_dir_files_hashset(dir);
+    let expected: HashSet<String> = log_filenames.into_iter().collect();
+    assert_eq!(log_files, expected);
 }

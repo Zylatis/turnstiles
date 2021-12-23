@@ -2,7 +2,7 @@
 /*!
 Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done.
 Currently this library only supports rotation by creating new files when a rotation is required, rather than renaming existing files.
-For example if `my_file.log` is given then when the first rotation occurs a file with the name `my_file.log.0` will be created and written to.
+For example if `my_file.log` is given then when the first rotation occurs a file with the name `my_file.log.1` will be created and written to.
 This means the latest file has the highest index, not the original filename. This is done to minimize surface area with the filesystem, but it
 is part of future work to potentially include the case where `my_file.log` is always the latest.
 
@@ -20,7 +20,7 @@ let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 let data: Vec<u8> = vec![0; 500_000];
 let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
 file.write(&data).unwrap(); // write 500k to file
-// Start at index zero
+// Start at index zero (the file suffix is index + 1, index = 0 corresponds to only the original file being present)
 assert!(file.index() == 0);
 file.write_all(&data).unwrap();
 
@@ -34,7 +34,6 @@ assert!(file.index() == 0);
 file.write_all(&data).unwrap();
 // Now after writing again we're > 1mb so we have a new file
 assert!(file.index() == 1);
-
 ```
 
 Rotate when a log file is too old (based on filesystem metadata timestamps)
@@ -151,7 +150,8 @@ impl RotatingFile {
     fn rotate_current_file(&mut self) -> Result<(), std::io::Error> {
         // TODO: think about if we want to be more careful here, i.e. append to a random file which may already exist and be a totally different format?
         // Could throw an exception, or print a warning and skip that file index. Who logs the loggers...
-        let new_file = &format!("{}.{}", self.filename_root, self.index);
+        let new_file = &format!("{}.{}", self.filename_root, self.index + 1);
+        dbg!(&new_file);
         self.current_file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -190,6 +190,7 @@ impl RotatingFile {
 impl io::Write for RotatingFile {
     fn write(&mut self, bytes: &[u8]) -> Result<usize, std::io::Error> {
         if self.rotation_required()? {
+            dbg!("ROTATING");
             self.rotate_current_file()?;
         }
         self.current_file.write(bytes)
