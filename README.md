@@ -24,21 +24,25 @@ Rotate when a log file exceeds a certain filesize
 ```rust
 let data: Vec<u8> = vec![0; 500_000];
 let mut file = RotatingFile::new("test.log", RotationOption::SizeMB(1)).unwrap();
-file.write(&data).unwrap(); // write 500k to file
-// Start at index zero (the file suffix is index + 1, index = 0 corresponds to only the original file being present)
-assert!(file.index() == 0);
-file.write_all(&data).unwrap();
-
-// Still at index zero because file size on disk is 500k
+// Write 500k to file creating temp.log
+file.write(&data).unwrap();
 assert!(file.index() == 0);
 
+// Write another 500kb so temp.log is 1mb
 file.write_all(&data).unwrap();
-// Still at index zero because file size on disk is 1mb and the check is > not >=
 assert!(file.index() == 0);
 
+// The check for rotation is done _before_ writing, so we don't rotate, and then write 500kb
+// so this file is 1.5mb now, still the same file
 file.write_all(&data).unwrap();
-// Now after writing again we're > 1mb so we have a new file
+assert!(file.index() == 0);
+
+// Now we check if we need to rotate before writing, and it's 1.5mb > the rotation option so
+// we make a new file and  write to that
+file.write_all(&data).unwrap();
 assert!(file.index() == 1);
+
+// Now have temp.log and temp.log.1
 ```
 
 Rotate when a log file is too old (based on filesystem metadata timestamps)
