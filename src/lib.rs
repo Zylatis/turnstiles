@@ -20,11 +20,11 @@ let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 let data: Vec<u8> = vec![0; 500_000];
 let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
 
-// Write 500k to file creating temp.log
+// Write 500k to file creating test.log
 file.write(&data).unwrap();
 assert!(file.index() == 0);
 
-// Write another 500kb so temp.log is 1mb
+// Write another 500kb so test.log is 1mb
 file.write_all(&data).unwrap();
 assert!(file.index() == 0);
 
@@ -39,7 +39,7 @@ assert!(file.index() == 0);
 file.write_all(&data).unwrap();
 assert!(file.index() == 1);
 
-// Now have temp.log and temp.log.1
+// Now have test.log and test.log.1
 ```
 
 Rotate when a log file is too old (based on filesystem metadata timestamps)
