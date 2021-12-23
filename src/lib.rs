@@ -203,7 +203,8 @@ impl io::Write for RotatingFile {
         if self.rotation_required()? {
             self.rotate_current_file()?;
         }
-        self.current_file.write(bytes)
+        self.current_file.write_all(bytes)?;
+        Ok(bytes.len())
     }
     fn flush(&mut self) -> Result<(), std::io::Error> {
         self.current_file.flush()
