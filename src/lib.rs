@@ -158,7 +158,6 @@ impl RotatingFile {
         // TODO: think about if we want to be more careful here, i.e. append to a random file which may already exist and be a totally different format?
         // Could throw an exception, or print a warning and skip that file index. Who logs the loggers...
         let new_file = &format!("{}.{}", self.filename_root, self.index + 1);
-        dbg!(&new_file);
         self.current_file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -197,7 +196,6 @@ impl RotatingFile {
 impl io::Write for RotatingFile {
     fn write(&mut self, bytes: &[u8]) -> Result<usize, std::io::Error> {
         if self.rotation_required()? {
-            dbg!("ROTATING");
             self.rotate_current_file()?;
         }
         self.current_file.write(bytes)
