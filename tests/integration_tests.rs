@@ -271,7 +271,7 @@ fn test_slog_json_async() {
         let file = std::fs::File::open(format!("{}/{}", &dir.path, filename)).unwrap();
         let data = std::io::BufReader::new(file).lines();
         for line in data {
-            assert!(line.unwrap().chars().last().unwrap() == '}');
+            assert!(line.unwrap().ends_with('}'));
         }
     }
 }
@@ -318,7 +318,7 @@ fn test_slog_json_async_binary_fail() {
         let file = std::fs::File::open(format!("{}/{}", &dir.path, filename)).unwrap();
         let data = std::io::BufReader::new(file).lines();
         for line in data {
-            assert!(line.unwrap().chars().last().unwrap() == '}');
+            assert!(line.unwrap().ends_with('}'));
         }
     }
 }
