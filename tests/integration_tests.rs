@@ -9,7 +9,7 @@ fn test_file_size() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 500_000];
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
+    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
 
     file.write_all(&data).unwrap(); // write 500k to file
 
@@ -32,7 +32,7 @@ fn test_file_size_no_rotate() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 1_000];
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
+    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 0);
@@ -52,8 +52,12 @@ fn test_file_duration() {
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
-    let mut file =
-        RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+    let mut file = RotatingFile::new(
+        path,
+        RotationOption::Duration(Duration::from_millis(100)),
+        false,
+    )
+    .unwrap();
 
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
@@ -96,8 +100,12 @@ fn test_file_duration_delay_fail() {
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
-    let mut file =
-        RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+    let mut file = RotatingFile::new(
+        path,
+        RotationOption::Duration(Duration::from_millis(100)),
+        false,
+    )
+    .unwrap();
     sleep(Duration::from_millis(200)); // the constructor makes the file and so the timer starts from then, this should cause it to fail
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
@@ -117,8 +125,12 @@ fn test_no_dir_simple() {
     drop(dir);
 
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
-    let mut file =
-        RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+    let mut file = RotatingFile::new(
+        path,
+        RotationOption::Duration(Duration::from_millis(100)),
+        false,
+    )
+    .unwrap();
     file.write_all(&data).unwrap();
 }
 
@@ -130,8 +142,12 @@ fn test_no_dir_intermediate() {
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
-    let mut file =
-        RotatingFile::new(path, RotationOption::Duration(Duration::from_millis(100))).unwrap();
+    let mut file = RotatingFile::new(
+        path,
+        RotationOption::Duration(Duration::from_millis(100)),
+        false,
+    )
+    .unwrap();
     file.write_all(&data).unwrap();
     sleep(Duration::from_millis(200));
     drop(dir);
@@ -144,7 +160,7 @@ fn test_data_integrity() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
+    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
     assert!(file.index() == 0);
 
     file.write_all(&vec![0; 600_000]).unwrap();
@@ -173,7 +189,7 @@ fn test_restart() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 600_000];
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
+    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
 
     file.write_all(&data).unwrap();
 
@@ -191,7 +207,7 @@ fn test_restart() {
     );
     // Start again and make sure we pickup where we left off
     drop(file);
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
+    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
 
     file.write_all(&data).unwrap();
 
@@ -215,6 +231,97 @@ fn test_restart() {
     );
 }
 
+#[test]
+fn test_slog_json_async() {
+    // Check that passing the 'expect_newline' works when we're writing with slog json which writes asynchronously
+
+    use slog::{info, o, Drain, Logger};
+    use std::io::BufRead;
+    use std::sync::Mutex;
+    use std::time::SystemTime;
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+
+    let log_file = RotatingFile::new(
+        path,
+        RotationOption::Duration(Duration::from_millis(100)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        true,
+    )
+    .unwrap();
+
+    let log_drain = slog_json::Json::default(log_file);
+    let logger = Logger::root(Mutex::new(log_drain).fuse(), o!());
+
+    let start = SystemTime::now();
+    while start.elapsed().unwrap() < Duration::from_millis(210) {
+        info!(
+            logger,
+            "abcd--------------------------------------------------------------"
+        );
+    }
+    // TODO: tidy
+    let expected_files = vec![
+        "test.log".to_string(),
+        "test.log.1".to_string(),
+        "test.log.2".to_string(),
+    ];
+    assert_correct_files(&dir.path, expected_files.clone());
+
+    for filename in expected_files {
+        let file = std::fs::File::open(format!("{}/{}", &dir.path, filename)).unwrap();
+        let data = std::io::BufReader::new(file).lines();
+        for line in data {
+            assert!(line.unwrap().chars().last().unwrap() == '}');
+        }
+    }
+}
+
+#[test]
+#[should_panic]
+
+fn test_slog_json_async_binary_fail() {
+    // Check that passing the 'expect_newline' works when we're writing with slog json which writes asynchronously
+
+    use slog::{info, o, Drain, Logger};
+    use std::io::BufRead;
+    use std::sync::Mutex;
+    use std::time::SystemTime;
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    // TODO: refactor common bits of these two tests
+    let log_file = RotatingFile::new(
+        path,
+        RotationOption::Duration(Duration::from_millis(100)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        false,
+    )
+    .unwrap();
+
+    let log_drain = slog_json::Json::default(log_file);
+    let logger = Logger::root(Mutex::new(log_drain).fuse(), o!());
+
+    let start = SystemTime::now();
+    while start.elapsed().unwrap() < Duration::from_millis(210) {
+        info!(
+            logger,
+            "abcd--------------------------------------------------------------"
+        );
+    }
+    // TODO: tidy
+    let expected_files = vec![
+        "test.log".to_string(),
+        "test.log.1".to_string(),
+        "test.log.2".to_string(),
+    ];
+    assert_correct_files(&dir.path, expected_files.clone());
+
+    for filename in expected_files {
+        let file = std::fs::File::open(format!("{}/{}", &dir.path, filename)).unwrap();
+        let data = std::io::BufReader::new(file).lines();
+        for line in data {
+            assert!(line.unwrap().chars().last().unwrap() == '}');
+        }
+    }
+}
 fn get_dir_files_hashset(dir: &str) -> HashSet<String> {
     let mut files = HashSet::new();
     for file in fs::read_dir(dir).unwrap() {
@@ -225,6 +332,7 @@ fn get_dir_files_hashset(dir: &str) -> HashSet<String> {
 }
 
 fn assert_correct_files(dir: &str, log_filenames: Vec<String>) {
+    // TODO change to ref of vec, prob doesn't need ownership
     let log_files = get_dir_files_hashset(dir);
     let expected: HashSet<String> = log_filenames.into_iter().collect();
     assert_eq!(log_files, expected);

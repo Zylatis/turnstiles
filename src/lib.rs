@@ -18,7 +18,7 @@ let dir = TempDir::new();
 
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 let data: Vec<u8> = vec![0; 500_000];
-let mut file = RotatingFile::new(path, RotationOption::SizeMB(1)).unwrap();
+let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
 
 // Write 500k to file creating test.log
 file.write(&data).unwrap();
@@ -55,7 +55,7 @@ let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 let max_log_age = Duration::from_millis(100);
 let data: Vec<u8> = vec![0; 1_000_000];
 let mut file =
-    RotatingFile::new(path, RotationOption::Duration(max_log_age)).unwrap();
+    RotatingFile::new(path, RotationOption::Duration(max_log_age), false).unwrap();
 
 assert!(file.index() == 0);
 file.write_all(&data).unwrap();
@@ -93,12 +93,13 @@ pub struct RotatingFile {
     rotation: RotationOption,
     current_file: File,
     index: u32,
+    require_newline: bool, // Should be type to avoid runtime cost?
 }
 
 impl RotatingFile {
     /// Create a new RotatingFile given a desired filename and rotation option. The filename represents the stem or root of the files
     /// to be generated.
-    pub fn new(path_str: &str, rotation: RotationOption) -> Result<Self> {
+    pub fn new(path_str: &str, rotation: RotationOption, require_newline: bool) -> Result<Self> {
         let (path_filename, parent) = filename_to_details(path_str)?;
         let current_index = Self::detect_latest_file_index(&path_filename, &parent)?;
         let current_filename = if current_index != 0 {
@@ -117,6 +118,7 @@ impl RotatingFile {
             current_file: file,
             index: current_index,
             filename_root: path_str.to_string(),
+            require_newline,
         })
     }
 
@@ -200,17 +202,23 @@ impl RotatingFile {
 
 impl io::Write for RotatingFile {
     fn write(&mut self, bytes: &[u8]) -> Result<usize, std::io::Error> {
-        let last_char = bytes.last().unwrap().clone();
-        if last_char == b'\n'.into() {
+        if !self.require_newline {
             if self.rotation_required()? {
                 self.rotate_current_file()?;
-                dbg!(&bytes, bytes.len());
-                if bytes.len() != 1 {
-                    self.current_file.write_all(bytes)?;
+            }
+        } else {
+            let last_char = bytes.last().unwrap().clone();
+            if last_char == b'\n'.into() {
+                if self.rotation_required()? {
+                    self.rotate_current_file()?;
+                    if bytes.len() != 1 {
+                        self.current_file.write_all(bytes)?;
+                    }
+                    return Ok(bytes.len());
                 }
-                return Ok(bytes.len());
             }
         }
+
         self.current_file.write_all(bytes)?;
         Ok(bytes.len())
     }
