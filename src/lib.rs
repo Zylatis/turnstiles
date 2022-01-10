@@ -206,16 +206,15 @@ impl io::Write for RotatingFile {
             if self.rotation_required()? {
                 self.rotate_current_file()?;
             }
-        } else {
-            let last_char = bytes.last().unwrap().clone();
-            if last_char == b'\n'.into() {
-                if self.rotation_required()? {
-                    self.rotate_current_file()?;
-                    if bytes.len() != 1 {
-                        self.current_file.write_all(bytes)?;
-                    }
-                    return Ok(bytes.len());
+        } else if let Some(last_char) = bytes.last() {
+            // Note this will prevent writing just a newline and so could break some stuff
+            // TODO: be smarter here in future, not sure how best to distinguish between genuine newline write and broken up log from slog async
+            if *last_char == b'\n' && self.rotation_required()? {
+                self.rotate_current_file()?;
+                if bytes.len() != 1 {
+                    self.current_file.write_all(bytes)?;
                 }
+                return Ok(bytes.len());
             }
         }
 
