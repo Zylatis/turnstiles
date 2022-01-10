@@ -200,8 +200,16 @@ impl RotatingFile {
 
 impl io::Write for RotatingFile {
     fn write(&mut self, bytes: &[u8]) -> Result<usize, std::io::Error> {
-        if self.rotation_required()? {
-            self.rotate_current_file()?;
+        let last_char = bytes.last().unwrap().clone();
+        if last_char == b'\n'.into() {
+            if self.rotation_required()? {
+                self.rotate_current_file()?;
+                dbg!(&bytes, bytes.len());
+                if bytes.len() != 1 {
+                    self.current_file.write_all(bytes)?;
+                }
+                return Ok(bytes.len());
+            }
         }
         self.current_file.write_all(bytes)?;
         Ok(bytes.len())
