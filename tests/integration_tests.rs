@@ -278,7 +278,6 @@ fn test_slog_json_async() {
 
 #[test]
 #[should_panic]
-
 fn test_slog_json_async_binary_fail() {
     // Check that passing the 'expect_newline' works when we're writing with slog json which writes asynchronously
 
@@ -322,6 +321,61 @@ fn test_slog_json_async_binary_fail() {
         }
     }
 }
+
+#[test]
+fn test_slog_json_async_data_integrity() {
+    // Ensure if we write a bunch of stuff to disk we get all the data back, no gaps etc
+    use serde::{Deserialize, Serialize};
+    // Check that passing the 'expect_newline' works when we're writing with slog json which writes asynchronously
+    #[derive(Serialize, Deserialize)]
+    struct JsonLog {
+        msg: String,
+        level: String,
+        ts: String,
+    }
+
+    use slog::{info, o, Drain, Logger};
+    use std::io::BufRead;
+    use std::sync::Mutex;
+
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+
+    let log_file = RotatingFile::new(
+        path,
+        RotationOption::Duration(Duration::from_millis(5)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        true,
+    )
+    .unwrap();
+
+    let log_drain = slog_json::Json::default(log_file);
+    let logger = Logger::root(Mutex::new(log_drain).fuse(), o!());
+
+    let mut data = HashSet::new();
+    let n = 100;
+    for i in 0..1000 {
+        let row: Vec<u32> = (0 + n * i..n + n * i).collect();
+        info!(logger, "{:?}", &row);
+        data.insert(format!("{:?}", &row));
+    }
+    // read the data back in, get the msg component, and confirm all data written
+    let mut json_data = HashSet::new();
+    for filename in get_dir_files_hashset(&dir.path) {
+        let file = std::fs::File::open(format!("{}/{}", &dir.path, filename)).unwrap();
+        let data = std::io::BufReader::new(file).lines();
+        for line in data {
+            let row_data: JsonLog = serde_json::from_str(&line.unwrap()).unwrap();
+            json_data.insert(row_data.msg);
+        }
+    }
+    // XOR the two sets (almost certainly a better way - retain mutates tho?)
+    let missing_ab: Vec<&String> = data.iter().filter(|x| !json_data.contains(*x)).collect();
+    let missing_ba: Vec<&String> = json_data.iter().filter(|x| !data.contains(*x)).collect();
+    assert!(missing_ab.len() == 0);
+    assert!(missing_ba.len() == 0);
+}
+
+// Some helpers
 fn get_dir_files_hashset(dir: &str) -> HashSet<String> {
     let mut files = HashSet::new();
     for file in fs::read_dir(dir).unwrap() {

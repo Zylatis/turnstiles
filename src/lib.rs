@@ -86,13 +86,15 @@ use std::{
 mod utils;
 use utils::{filename_to_details, safe_unwrap_osstr};
 
+// TODO: template this maybe? Or just make it u128 and fugheddaboutit?
+type FileIndexInt = u32;
 #[derive(Debug)]
 /// Struct masquerades as a file handle and is written to by whatever you like
 pub struct RotatingFile {
     filename_root: String,
     rotation: RotationOption,
     current_file: File,
-    index: u32,
+    index: FileIndexInt,
     require_newline: bool, // Should be type to avoid runtime cost?
 }
 
@@ -100,6 +102,7 @@ impl RotatingFile {
     /// Create a new RotatingFile given a desired filename and rotation option. The filename represents the stem or root of the files
     /// to be generated.
     pub fn new(path_str: &str, rotation: RotationOption, require_newline: bool) -> Result<Self> {
+        // TODO: throw error if path_str (rootname) ends in digit as this will break the numbering stuff
         let (path_filename, parent) = filename_to_details(path_str)?;
         let current_index = Self::detect_latest_file_index(&path_filename, &parent)?;
         let current_filename = if current_index != 0 {
@@ -137,11 +140,11 @@ impl RotatingFile {
     }
 
     /// A read-only wrapper to the index, at the moment only for testing purposes.
-    pub fn index(&self) -> u32 {
+    pub fn index(&self) -> FileIndexInt {
         self.index
     }
     /// Given a filename stem and folder path find the highest index so where know where to pick up after we left off in a previous incarnation
-    fn detect_latest_file_index(filename: &str, folder_path: &str) -> Result<u32> {
+    fn detect_latest_file_index(filename: &str, folder_path: &str) -> Result<FileIndexInt> {
         let log_files = Self::list_log_files(filename, folder_path)?;
         let mut max_index = 0;
         for filename_string in log_files {
@@ -153,7 +156,7 @@ impl RotatingFile {
                     Some(s) => s,
                 };
 
-                let i = file_index.parse::<u32>()?;
+                let i = file_index.parse::<FileIndexInt>()?;
                 max_index = cmp::max(i, max_index);
             }
         }
