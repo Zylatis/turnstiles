@@ -93,7 +93,8 @@ const ACTIVE_PREFIX: &'static str = "ACTIVE_";
 /// Struct masquerades as a file handle and is written to by whatever you like
 pub struct RotatingFile {
     filename_root: String,
-
+    parent: String,
+    active_file_path: String,
     rotation: RotationOption,
     current_file: File,
     index: FileIndexInt,
@@ -107,19 +108,21 @@ impl RotatingFile {
         // TODO: throw error if path_str (rootname) ends in digit as this will break the numbering stuff
         let (path_filename, parent) = filename_to_details(path_str)?;
         let current_index = Self::detect_latest_file_index(&path_filename, &parent)? + 1;
-        let current_file_path = format!("{}/{}{}", parent, ACTIVE_PREFIX, path_filename);
-        dbg!(&current_file_path);
+        let active_file_path = format!("{}/{}{}", parent, ACTIVE_PREFIX, path_filename);
+
         let file = OpenOptions::new()
             .create(true)
             .write(true)
             .append(true)
-            .open(current_file_path)?;
+            .open(active_file_path.clone())?;
         Ok(Self {
             rotation,
+            parent,
             current_file: file,
             index: current_index,
             filename_root: path_str.to_string(),
             require_newline,
+            active_file_path,
         })
     }
 
@@ -166,11 +169,14 @@ impl RotatingFile {
         // TODO: think about if we want to be more careful here, i.e. append to a random file which may already exist and be a totally different format?
         // Could throw an exception, or print a warning and skip that file index. Who logs the loggers...
         let new_file = &format!("{}.{}", self.filename_root, self.index + 1);
+
+        fs::rename(&self.active_file_path, new_file)?;
+
         self.current_file = OpenOptions::new()
             .create(true)
             .write(true)
             .append(true)
-            .open(new_file)?;
+            .open(&self.active_file_path)?;
         self.index += 1; // Only do this once the above results have passed.
         Ok(())
     }
