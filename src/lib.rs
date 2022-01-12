@@ -183,7 +183,7 @@ impl RotatingFile {
     fn rotation_required(&mut self) -> Result<bool, std::io::Error> {
         let rotate = match self.rotation {
             RotationOption::None => false,
-            RotationOption::SizeMB(size) => self.file_metadata()?.len() > size * 1_000_000,
+            RotationOption::SizeMB(size) => self.file_metadata()?.len() > size * 1_048_576,
             // RotationOption::SizeLines(len) => false,
             RotationOption::Duration(duration) => {
                 match self.file_metadata()?.created()?.elapsed() {
