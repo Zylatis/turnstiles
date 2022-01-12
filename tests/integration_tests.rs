@@ -354,7 +354,7 @@ fn test_slog_json_async_data_integrity() {
     let mut data = HashSet::new();
     let n = 100;
     for i in 0..1000 {
-        let row: Vec<u32> = (0 + n * i..n + n * i).collect();
+        let row: Vec<u32> = (n * i..n + n * i).collect();
         info!(logger, "{:?}", &row);
         data.insert(format!("{:?}", &row));
     }
@@ -369,10 +369,9 @@ fn test_slog_json_async_data_integrity() {
         }
     }
     // XOR the two sets (almost certainly a better way - retain mutates tho?)
-    let missing_ab: Vec<&String> = data.iter().filter(|x| !json_data.contains(*x)).collect();
-    let missing_ba: Vec<&String> = json_data.iter().filter(|x| !data.contains(*x)).collect();
-    assert!(missing_ab.len() == 0);
-    assert!(missing_ba.len() == 0);
+
+    assert!(json_data.iter().filter(|x| !data.contains(*x)).count() == 0);
+    assert!(data.iter().filter(|x| !json_data.contains(*x)).count() == 0);
 }
 
 // Some helpers
