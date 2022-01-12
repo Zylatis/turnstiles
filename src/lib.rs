@@ -88,10 +88,12 @@ use utils::{filename_to_details, safe_unwrap_osstr};
 
 // TODO: template this maybe? Or just make it u128 and fugheddaboutit?
 type FileIndexInt = u32;
+const ACTIVE_PREFIX: &'static str = "ACTIVE_";
 #[derive(Debug)]
 /// Struct masquerades as a file handle and is written to by whatever you like
 pub struct RotatingFile {
     filename_root: String,
+
     rotation: RotationOption,
     current_file: File,
     index: FileIndexInt,
@@ -104,13 +106,9 @@ impl RotatingFile {
     pub fn new(path_str: &str, rotation: RotationOption, require_newline: bool) -> Result<Self> {
         // TODO: throw error if path_str (rootname) ends in digit as this will break the numbering stuff
         let (path_filename, parent) = filename_to_details(path_str)?;
-        let current_index = Self::detect_latest_file_index(&path_filename, &parent)?;
-        let current_filename = if current_index != 0 {
-            format!("{}.{}", path_filename, current_index)
-        } else {
-            path_filename
-        };
-        let current_file_path = format!("{}/{}", parent, current_filename);
+        let current_index = Self::detect_latest_file_index(&path_filename, &parent)? + 1;
+        let current_file_path = format!("{}/{}{}", parent, ACTIVE_PREFIX, path_filename);
+        dbg!(&current_file_path);
         let file = OpenOptions::new()
             .create(true)
             .write(true)
