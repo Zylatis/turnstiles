@@ -168,8 +168,9 @@ impl RotatingFile {
     fn rotate_current_file(&mut self) -> Result<(), std::io::Error> {
         // TODO: think about if we want to be more careful here, i.e. append to a random file which may already exist and be a totally different format?
         // Could throw an exception, or print a warning and skip that file index. Who logs the loggers...
-        let new_file = &format!("{}.{}", self.filename_root, self.index + 1);
 
+        // TODO: fix naughtyness of renaming file while handle still open, should prob be an option which we take and shutdown
+        let new_file = &format!("{}.{}", self.filename_root, self.index + 1);
         fs::rename(&self.active_file_path, new_file)?;
 
         self.current_file = OpenOptions::new()
