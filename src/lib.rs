@@ -107,8 +107,8 @@ impl RotatingFile {
     pub fn new(path_str: &str, rotation: RotationOption, require_newline: bool) -> Result<Self> {
         // TODO: throw error if path_str (rootname) ends in digit as this will break the numbering stuff
         let (path_filename, parent) = filename_to_details(path_str)?;
-        let current_index = Self::detect_latest_file_index(&path_filename, &parent)? + 1;
         let active_file_path = format!("{}/{}{}", parent, ACTIVE_PREFIX, path_filename);
+        let current_index = Self::detect_latest_file_index(&path_filename, &parent)? + 1;
 
         let file = OpenOptions::new()
             .create(true)
@@ -149,7 +149,7 @@ impl RotatingFile {
         let log_files = Self::list_log_files(filename, folder_path)?;
         let mut max_index = 0;
         for filename_string in log_files {
-            if filename_string == filename {
+            if filename_string == format!("{}{}", ACTIVE_PREFIX, filename) {
                 continue;
             } else {
                 let file_index = match filename_string.split('.').last() {
