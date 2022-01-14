@@ -93,7 +93,6 @@ const ACTIVE_PREFIX: &'static str = "ACTIVE_";
 /// Struct masquerades as a file handle and is written to by whatever you like
 pub struct RotatingFile {
     filename_root: String,
-    parent: String,
     active_file_path: String,
     rotation: RotationOption,
     current_file: File,
@@ -117,7 +116,6 @@ impl RotatingFile {
             .open(active_file_path.clone())?;
         Ok(Self {
             rotation,
-            parent,
             current_file: file,
             index: current_index,
             filename_root: path_str.to_string(),
@@ -241,4 +239,12 @@ pub enum RotationOption {
     SizeMB(u64),
     // SizeLines(u64),
     Duration(Duration),
+}
+/// Enum for possible file prune options.
+#[derive(Debug)]
+
+pub enum PruneMethod {
+    None,
+    MaxFiles(u64),
+    MaxAge(Duration),
 }
