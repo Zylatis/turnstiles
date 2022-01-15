@@ -1,7 +1,7 @@
 use std::{collections::HashSet, fs, io::Write, thread::sleep, time::Duration};
 
 use tempdir::TempDir;
-use turnstiles::{RotatingFile, RotationOption};
+use turnstiles::{PruneMethod, RotatingFile, RotationOption};
 
 // Duplicated by doctests but i think that's okay? These have fn names, easier to interpret if failing...
 #[test]
@@ -9,7 +9,8 @@ fn test_file_size() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 500_000];
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
+    let mut file =
+        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
 
     file.write_all(&data).unwrap(); // write 500k to file
 
@@ -23,7 +24,7 @@ fn test_file_size() {
     assert!(file.index() == 1);
     assert_correct_files(
         &dir.path,
-        vec!["test.log".to_string(), "test.log.1".to_string()],
+        vec!["ACTIVE_test.log".to_string(), "test.log.1".to_string()],
     );
 }
 
@@ -32,7 +33,8 @@ fn test_file_size_no_rotate() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 1_000];
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
+    let mut file =
+        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 0);
@@ -40,10 +42,7 @@ fn test_file_size_no_rotate() {
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 0);
-    assert_correct_files(
-        &dir.path,
-        vec!["test.log".to_string(), "test.log".to_string()],
-    );
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log".to_string()]);
 }
 
 #[test]
@@ -55,6 +54,7 @@ fn test_file_duration() {
     let mut file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)),
+        PruneMethod::None,
         false,
     )
     .unwrap();
@@ -86,7 +86,7 @@ fn test_file_duration() {
     assert_correct_files(
         &dir.path,
         vec![
-            "test.log".to_string(),
+            "ACTIVE_test.log".to_string(),
             "test.log.1".to_string(),
             "test.log.2".to_string(),
         ],
@@ -103,6 +103,7 @@ fn test_file_duration_delay_fail() {
     let mut file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)),
+        PruneMethod::None,
         false,
     )
     .unwrap();
@@ -128,6 +129,7 @@ fn test_no_dir_simple() {
     let mut file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)),
+        PruneMethod::None,
         false,
     )
     .unwrap();
@@ -145,6 +147,7 @@ fn test_no_dir_intermediate() {
     let mut file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)),
+        PruneMethod::None,
         false,
     )
     .unwrap();
@@ -160,7 +163,8 @@ fn test_data_integrity() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
+    let mut file =
+        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
     assert!(file.index() == 0);
 
     file.write_all(&vec![0; 600_000]).unwrap();
@@ -173,14 +177,15 @@ fn test_data_integrity() {
     assert!(file.index() == 1);
 
     // Original data
-    let data = fs::read(path).unwrap();
-    assert_eq!(data, vec![0; 1_200_000]);
-    // Rotated data
     let data = fs::read(format!("{}.1", path)).unwrap();
+    assert_eq!(data, vec![0; 1_200_000]);
+
+    // Rotated data
+    let data = fs::read(file.current_file_path_str()).unwrap();
     assert_eq!(data, vec![1; 600_000]);
     assert_correct_files(
         &dir.path,
-        vec!["test.log".to_string(), "test.log.1".to_string()],
+        vec!["ACTIVE_test.log".to_string(), "test.log.1".to_string()],
     );
 }
 
@@ -189,7 +194,8 @@ fn test_restart() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 600_000];
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
+    let mut file =
+        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
 
     file.write_all(&data).unwrap();
 
@@ -203,11 +209,12 @@ fn test_restart() {
     assert!(file.index() == 1);
     assert_correct_files(
         &dir.path,
-        vec!["test.log".to_string(), "test.log.1".to_string()],
+        vec!["ACTIVE_test.log".to_string(), "test.log.1".to_string()],
     );
     // Start again and make sure we pickup where we left off
     drop(file);
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
+    let mut file =
+        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
 
     file.write_all(&data).unwrap();
 
@@ -223,7 +230,7 @@ fn test_restart() {
     assert_correct_files(
         &dir.path,
         vec![
-            "test.log".to_string(),
+            "ACTIVE_test.log".to_string(),
             "test.log.1".to_string(),
             "test.log.2".to_string(),
             "test.log.3".to_string(),
@@ -245,6 +252,7 @@ fn test_slog_json_async() {
     let log_file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        PruneMethod::None,
         true,
     )
     .unwrap();
@@ -261,7 +269,7 @@ fn test_slog_json_async() {
     }
     // TODO: tidy
     let expected_files = vec![
-        "test.log".to_string(),
+        "ACTIVE_test.log".to_string(),
         "test.log.1".to_string(),
         "test.log.2".to_string(),
     ];
@@ -291,6 +299,7 @@ fn test_slog_json_async_binary_fail() {
     let log_file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        PruneMethod::None,
         false,
     )
     .unwrap();
@@ -307,7 +316,7 @@ fn test_slog_json_async_binary_fail() {
     }
     // TODO: tidy
     let expected_files = vec![
-        "test.log".to_string(),
+        "ACTIVE_test.log".to_string(),
         "test.log.1".to_string(),
         "test.log.2".to_string(),
     ];
@@ -344,6 +353,7 @@ fn test_slog_json_async_data_integrity() {
     let log_file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(5)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        PruneMethod::None,
         true,
     )
     .unwrap();
