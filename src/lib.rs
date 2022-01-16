@@ -79,6 +79,7 @@ assert!(file.index() == 1);
 */
 use anyhow::{bail, Result};
 use std::fs::remove_file;
+use std::time::SystemTime;
 use std::{cmp, fs};
 use std::{
     fs::{File, Metadata, OpenOptions},
@@ -223,7 +224,14 @@ impl RotatingFile {
         match self.prune_method {
             PruneMethod::None => {}
             PruneMethod::MaxAge(d) => {
-                unimplemented!()
+                let modified_cutoff = SystemTime::now() - d;
+                for filename in log_file_list {
+                    let path = format!("{}/{}", self.parent, filename);
+                    let metadata = fs::metadata(&path)?;
+                    if metadata.modified()? < modified_cutoff {
+                        remove_file(path)?;
+                    }
+                }
             }
             PruneMethod::MaxFiles(n) => {
                 // This works but I hate it.
