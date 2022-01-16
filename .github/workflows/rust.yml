@@ -1,7 +1,7 @@
 name: Rust
 on:
   push:
-    branches: [ main, hotfix/* ]
+    branches: [ main, hotfix/*, feature/* ]
   pull_request:
     branches: [ main, release/* ]
 env:
