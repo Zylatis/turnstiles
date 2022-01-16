@@ -11,6 +11,11 @@ Implemented/planned rotation conditions:
 - [x] Duration (time since last modified)
 - [ ] SizeLines (number of lines in file) 
 
+There are also three options to prune old logs:
+- [x] None
+- [x] MaxFiles
+- [x] MaxAge
+
 ## Warning:
 This is currently in active development and may change/break often. Every effort will be taken to ensure that breaking changes that occur are reflected in a change of at least the minor version of the package, both in terms of the API and the generation of log files. Versions prior to 0.2.0 were so riddled with bugs I'm amazed I managed to put my pants on on those days I was writing it.
 
