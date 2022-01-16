@@ -431,7 +431,7 @@ fn test_invalid_options() {
 }
 
 // Some helpers
-pub fn get_dir_files_hashset(dir: &str) -> HashSet<String> {
+fn get_dir_files_hashset(dir: &str) -> HashSet<String> {
     let mut files = HashSet::new();
     for file in fs::read_dir(dir).unwrap() {
         let filename = file.unwrap().file_name().to_str().unwrap().to_string();
@@ -440,7 +440,7 @@ pub fn get_dir_files_hashset(dir: &str) -> HashSet<String> {
     files
 }
 
-pub fn assert_correct_files(dir: &str, log_filenames: Vec<&str>) {
+fn assert_correct_files(dir: &str, log_filenames: Vec<&str>) {
     // TODO: change to ref of vec, prob doesn't need ownership
     // TODO: fix this complete shitshow
     let log_files: HashSet<String> = get_dir_files_hashset(dir);
