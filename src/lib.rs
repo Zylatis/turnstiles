@@ -91,7 +91,7 @@ use utils::{filename_to_details, safe_unwrap_osstr};
 
 // TODO: template this maybe? Or just make it u128 and fugheddaboutit?
 type FileIndexInt = u32;
-const ACTIVE_PREFIX: &'static str = "ACTIVE_";
+const ACTIVE_PREFIX: &str = "ACTIVE_";
 #[derive(Debug)]
 /// Struct masquerades as a file handle and is written to by whatever you like
 pub struct RotatingFile {
@@ -129,7 +129,7 @@ impl RotatingFile {
             prune_method,
             current_file: file,
             index: current_index,
-            filename_root: path_filename.to_string(),
+            filename_root: path_filename,
             require_newline,
             active_file_path,
             parent,
