@@ -1,6 +1,6 @@
 [package]
 name = "turnstiles"
-version = "0.2.3"
+version = "0.3.0"
 authors = ["Graeme Gossel <graeme.gossel@gmail.com>"]
 description = "Seamless file rotation"
 edition = "2021"
