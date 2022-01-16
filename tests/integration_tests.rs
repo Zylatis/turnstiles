@@ -396,8 +396,8 @@ fn test_file_number_prune() {
     )
     .unwrap();
 
-    for i in 0..10 {
-        file.write(&data).unwrap();
+    for _ in 0..10 {
+        file.write_all(&data).unwrap();
     }
 
     assert_correct_files(
@@ -423,12 +423,12 @@ fn test_file_age_prune() {
     )
     .unwrap();
 
-    for i in 0..10 {
-        file.write(&data).unwrap();
+    for _ in 0..10 {
+        file.write_all(&data).unwrap();
     }
     sleep(Duration::from_millis(1000));
-    file.write(&data).unwrap();
-    file.write(&data).unwrap();
+    file.write_all(&data).unwrap();
+    file.write_all(&data).unwrap();
     assert_correct_files(&dir.path, vec!["ACTIVE_test.log".to_string()]);
 }
 
