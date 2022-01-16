@@ -130,6 +130,7 @@ use utils::{filename_to_details, safe_unwrap_osstr};
 // TODO: template this maybe? Or just make it u128 and fugheddaboutit?
 type FileIndexInt = u32;
 const ACTIVE_PREFIX: &str = "ACTIVE_";
+const BYTES_TO_MB: u64 = 1_048_576;
 #[derive(Debug)]
 /// Struct masquerades as a file handle and is written to by whatever you like
 pub struct RotatingFile {
@@ -252,7 +253,7 @@ impl RotatingFile {
     fn rotation_required(&mut self) -> Result<bool, std::io::Error> {
         let rotate = match self.rotation_method {
             RotationOption::None => false,
-            RotationOption::SizeMB(size) => self.file_metadata()?.len() > size * 1_048_576,
+            RotationOption::SizeMB(size) => self.file_metadata()?.len() > size * BYTES_TO_MB,
             // RotationOption::SizeLines(len) => false,
             RotationOption::Duration(duration) => {
                 match self.file_metadata()?.created()?.elapsed() {
@@ -285,11 +286,10 @@ impl RotatingFile {
             }
             PruneMethod::MaxFiles(n) => {
                 let index_u = self.index as usize;
-                // This works but I hate it.
+                // This works but I hate it; juggling usize stuff
                 if log_file_list.len() > n - 1 && index_u + 2 > 1 + n {
                     for i in 1..index_u - n + 2 {
                         let file_to_delete = &format!("{}.{}", self.filename_root, i);
-
                         if log_file_list.contains(file_to_delete) {
                             remove_file(format!("{}/{}", self.parent, file_to_delete))?;
                         }
@@ -345,8 +345,8 @@ impl io::Write for RotatingFile {
 pub enum RotationOption {
     None,
     SizeMB(u64),
-    // SizeLines(u64),
     Duration(Duration),
+    // SizeLines(u64),
 }
 /// Enum for possible file prune options.
 #[derive(Debug)]
