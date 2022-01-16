@@ -15,8 +15,7 @@ Implemented/planned rotation conditions:
 This is currently in active development and may change/break often. Every effort will be taken to ensure that breaking changes that occur are reflected in a change of at least the minor version of the package, both in terms of the API and the generation of log files. Versions prior to 0.2.0 were so riddled with bugs I'm amazed I managed to put my pants on on those days I was writing it.
 
 ## Note:
-Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done. This works by keeping track
-of the 'active' file, the one currently being written to, which upon rotation is renamed to include the next log file index. For example when there is only one log file it will be `test_ACTIVE.log`, which when rotated will get renamed to `test.log.1` and the `test_ACTIVE.log` will represent a new file being written to. Originally no file renaming was done to keep the surface area with the filesystem as small as possible, however this has a few disadvantages and this active-file-approach (courtesy of [flex-logger](https://docs.rs/flexi_logger/latest/flexi_logger/)) was seen as a good compromise.
+Rotation works by keeping track of the 'active' file, the one currently being written to, which upon rotation is renamed to include the next log file index. For example when there is only one log file it will be `test_ACTIVE.log`, which when rotated will get renamed to `test.log.1` and the `test_ACTIVE.log` will represent a new file being written to. Originally no file renaming was done to keep the surface area with the filesystem as small as possible, however this has a few disadvantages and this active-file-approach (courtesy of [flex-logger](https://docs.rs/flexi_logger/latest/flexi_logger/)) was seen as a good compromise.
 
 
 # Examples
