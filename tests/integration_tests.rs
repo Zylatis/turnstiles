@@ -379,9 +379,57 @@ fn test_slog_json_async_data_integrity() {
         }
     }
     // XOR the two sets (almost certainly a better way - retain mutates tho?)
-
     assert!(json_data.iter().filter(|x| !data.contains(*x)).count() == 0);
     assert!(data.iter().filter(|x| !json_data.contains(*x)).count() == 0);
+}
+
+#[test]
+fn test_file_number_prune() {
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let data: Vec<u8> = vec![0; 990_000];
+    let mut file = RotatingFile::new(
+        path,
+        RotationOption::SizeMB(1),
+        PruneMethod::MaxFiles(3),
+        false,
+    )
+    .unwrap();
+
+    for i in 0..10 {
+        file.write(&data).unwrap();
+    }
+
+    assert_correct_files(
+        &dir.path,
+        vec![
+            "ACTIVE_test.log".to_string(),
+            "test.log.3".to_string(),
+            "test.log.4".to_string(),
+        ],
+    );
+}
+
+#[test]
+fn test_file_age_prune() {
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let data: Vec<u8> = vec![0; 990_000];
+    let mut file = RotatingFile::new(
+        path,
+        RotationOption::SizeMB(1),
+        PruneMethod::MaxAge(Duration::from_millis(1000)),
+        false,
+    )
+    .unwrap();
+
+    for i in 0..10 {
+        file.write(&data).unwrap();
+    }
+    sleep(Duration::from_millis(1000));
+    file.write(&data).unwrap();
+    file.write(&data).unwrap();
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log".to_string()]);
 }
 
 // Some helpers

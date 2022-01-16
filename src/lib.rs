@@ -219,6 +219,7 @@ impl RotatingFile {
     }
 
     fn prune_logs(&mut self) -> Result<(), std::io::Error> {
+        // TODO: tidy this horribleness and seek out corner cases
         let log_file_list = Self::list_log_files(&self.filename_root, &self.parent)?;
 
         match self.prune_method {
@@ -234,9 +235,10 @@ impl RotatingFile {
                 }
             }
             PruneMethod::MaxFiles(n) => {
+                let index_u = self.index as usize;
                 // This works but I hate it.
-                if log_file_list.len() > n - 1 {
-                    for i in 1..self.index as usize - n + 2 {
+                if log_file_list.len() > n - 1 && index_u + 2 > 1 + n {
+                    for i in 1..index_u - n + 2 {
                         let file_to_delete = &format!("{}.{}", self.filename_root, i);
 
                         if log_file_list.contains(file_to_delete) {
