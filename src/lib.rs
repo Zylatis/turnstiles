@@ -19,7 +19,8 @@ let dir = TempDir::new();
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 let data: Vec<u8> = vec![0; 500_000];
 // The `false` here is to do with require_newline and is only needed for async loggers
-let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
+let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false)
+                .unwrap();
 
 // Write 500k to file creating test.log
 file.write(&data).unwrap();
@@ -48,15 +49,15 @@ Rotate when a log file is too old (based on filesystem metadata timestamps)
 ```
 use std::{io::Write, thread::sleep, time::Duration};
 use turnstiles::{RotatingFile, RotationOption, PruneMethod};
-
 use tempdir::TempDir; // Subcrate provided for testing
- let dir = TempDir::new();
+let dir = TempDir::new();
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
 let max_log_age = Duration::from_millis(100);
 let data: Vec<u8> = vec![0; 1_000_000];
 let mut file =
-    RotatingFile::new(path, RotationOption::Duration(max_log_age), PruneMethod::None, false).unwrap();
+    RotatingFile::new(path, RotationOption::Duration(max_log_age), PruneMethod::None, false)
+        .unwrap();
 
 assert!(file.index() == 0);
 file.write_all(&data).unwrap();
@@ -76,6 +77,33 @@ assert!(file.index() == 1);
 
 // Will now have test_ACTIVE.log and test.log.1
 ```
+
+
+Prune old logs to avoid filling up the disk
+
+```
+use std::io::Write;
+use tempdir::{TempDir,assert_correct_files};
+use turnstiles::{PruneMethod, RotatingFile, RotationOption}; // Subcrate provided for testing
+let dir = TempDir::new();
+let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+let data: Vec<u8> = vec![0; 990_000];
+let mut file = RotatingFile::new(
+    path,
+    RotationOption::SizeMB(1),
+    PruneMethod::MaxFiles(3),
+    false,
+).unwrap();
+
+// Generate > 3 files
+for _ in 0..10 {
+    file.write_all(&data).unwrap();
+}
+
+// Should now only have the active file and two files with the highest index
+assert_correct_files(&dir.path,  vec!["ACTIVE_test.log", "test.log.3", "test.log.4"]);
+```
+
 */
 use anyhow::{bail, Result};
 use std::fs::remove_file;

@@ -1,6 +1,6 @@
-use std::{collections::HashSet, fs, io::Write, thread::sleep, time::Duration};
+use std::{collections::HashSet, io::Write, thread::sleep, time::Duration};
 
-use tempdir::TempDir;
+use tempdir::{assert_correct_files, get_dir_files_hashset, TempDir};
 use turnstiles::{PruneMethod, RotatingFile, RotationOption};
 
 // Duplicated by doctests but i think that's okay? These have fn names, easier to interpret if failing...
@@ -22,10 +22,7 @@ fn test_file_size() {
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 1);
-    assert_correct_files(
-        &dir.path,
-        vec!["ACTIVE_test.log".to_string(), "test.log.1".to_string()],
-    );
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log", "test.log.1"]);
 }
 
 #[test]
@@ -42,7 +39,7 @@ fn test_file_size_no_rotate() {
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 0);
-    assert_correct_files(&dir.path, vec!["ACTIVE_test.log".to_string()]);
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log"]);
 }
 
 #[test]
@@ -85,11 +82,7 @@ fn test_file_duration() {
 
     assert_correct_files(
         &dir.path,
-        vec![
-            "ACTIVE_test.log".to_string(),
-            "test.log.1".to_string(),
-            "test.log.2".to_string(),
-        ],
+        vec!["ACTIVE_test.log", "test.log.1", "test.log.2"],
     );
 }
 
@@ -183,10 +176,7 @@ fn test_data_integrity() {
     // Rotated data
     let data = fs::read(file.current_file_path_str()).unwrap();
     assert_eq!(data, vec![1; 600_000]);
-    assert_correct_files(
-        &dir.path,
-        vec!["ACTIVE_test.log".to_string(), "test.log.1".to_string()],
-    );
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log", "test.log.1"]);
 }
 
 #[test]
@@ -207,10 +197,7 @@ fn test_restart() {
     assert!(file.index() == 1);
     file.write_all(&data).unwrap();
     assert!(file.index() == 1);
-    assert_correct_files(
-        &dir.path,
-        vec!["ACTIVE_test.log".to_string(), "test.log.1".to_string()],
-    );
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log", "test.log.1"]);
     // Start again and make sure we pickup where we left off
     drop(file);
     let mut file =
@@ -229,12 +216,7 @@ fn test_restart() {
 
     assert_correct_files(
         &dir.path,
-        vec![
-            "ACTIVE_test.log".to_string(),
-            "test.log.1".to_string(),
-            "test.log.2".to_string(),
-            "test.log.3".to_string(),
-        ],
+        vec!["ACTIVE_test.log", "test.log.1", "test.log.2", "test.log.3"],
     );
 }
 
@@ -268,11 +250,7 @@ fn test_slog_json_async() {
         );
     }
     // TODO: tidy
-    let expected_files = vec![
-        "ACTIVE_test.log".to_string(),
-        "test.log.1".to_string(),
-        "test.log.2".to_string(),
-    ];
+    let expected_files = vec!["ACTIVE_test.log", "test.log.1", "test.log.2"];
     assert_correct_files(&dir.path, expected_files.clone());
 
     for filename in expected_files {
@@ -315,11 +293,7 @@ fn test_slog_json_async_binary_fail() {
         );
     }
     // TODO: tidy
-    let expected_files = vec![
-        "ACTIVE_test.log".to_string(),
-        "test.log.1".to_string(),
-        "test.log.2".to_string(),
-    ];
+    let expected_files = vec!["ACTIVE_test.log", "test.log.1", "test.log.2"];
     assert_correct_files(&dir.path, expected_files.clone());
 
     for filename in expected_files {
@@ -402,11 +376,7 @@ fn test_file_number_prune() {
 
     assert_correct_files(
         &dir.path,
-        vec![
-            "ACTIVE_test.log".to_string(),
-            "test.log.3".to_string(),
-            "test.log.4".to_string(),
-        ],
+        vec!["ACTIVE_test.log", "test.log.3", "test.log.4"],
     );
 }
 
@@ -429,22 +399,5 @@ fn test_file_age_prune() {
     sleep(Duration::from_millis(1000));
     file.write_all(&data).unwrap();
     file.write_all(&data).unwrap();
-    assert_correct_files(&dir.path, vec!["ACTIVE_test.log".to_string()]);
-}
-
-// Some helpers
-fn get_dir_files_hashset(dir: &str) -> HashSet<String> {
-    let mut files = HashSet::new();
-    for file in fs::read_dir(dir).unwrap() {
-        let filename = file.unwrap().file_name().to_str().unwrap().to_string();
-        files.insert(filename);
-    }
-    files
-}
-
-fn assert_correct_files(dir: &str, log_filenames: Vec<String>) {
-    // TODO change to ref of vec, prob doesn't need ownership
-    let log_files = get_dir_files_hashset(dir);
-    let expected: HashSet<String> = log_filenames.into_iter().collect();
-    assert_eq!(log_files, expected);
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log"]);
 }
