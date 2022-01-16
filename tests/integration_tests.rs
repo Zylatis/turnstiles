@@ -1,6 +1,6 @@
-use std::{collections::HashSet, io::Write, thread::sleep, time::Duration};
+use std::{collections::HashSet, fs, io::Write, thread::sleep, time::Duration};
 
-use tempdir::{assert_correct_files, get_dir_files_hashset, TempDir};
+use tempdir::TempDir;
 use turnstiles::{PruneMethod, RotatingFile, RotationOption};
 
 // Duplicated by doctests but i think that's okay? These have fn names, easier to interpret if failing...
@@ -370,13 +370,13 @@ fn test_file_number_prune() {
     )
     .unwrap();
 
-    for _ in 0..10 {
+    for _ in 0..20 {
         file.write_all(&data).unwrap();
     }
 
     assert_correct_files(
         &dir.path,
-        vec!["ACTIVE_test.log", "test.log.3", "test.log.4"],
+        vec!["ACTIVE_test.log", "test.log.8", "test.log.9"],
     );
 }
 
@@ -393,11 +393,31 @@ fn test_file_age_prune() {
     )
     .unwrap();
 
-    for _ in 0..10 {
+    for _ in 0..20 {
         file.write_all(&data).unwrap();
     }
     sleep(Duration::from_millis(1000));
     file.write_all(&data).unwrap();
     file.write_all(&data).unwrap();
     assert_correct_files(&dir.path, vec!["ACTIVE_test.log"]);
+}
+
+// Some helpers
+pub fn get_dir_files_hashset(dir: &str) -> HashSet<String> {
+    let mut files = HashSet::new();
+    for file in fs::read_dir(dir).unwrap() {
+        let filename = file.unwrap().file_name().to_str().unwrap().to_string();
+        files.insert(filename);
+    }
+    files
+}
+
+pub fn assert_correct_files(dir: &str, log_filenames: Vec<&str>) {
+    // TODO: change to ref of vec, prob doesn't need ownership
+    // TODO: fix this complete shitshow
+    let log_files: HashSet<String> = get_dir_files_hashset(dir);
+    let log_files_str: HashSet<&str> = log_files.iter().map(AsRef::as_ref).collect();
+    let expected: HashSet<&str> = log_filenames.into_iter().collect();
+
+    assert_eq!(log_files_str, expected);
 }

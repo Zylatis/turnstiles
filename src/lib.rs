@@ -82,8 +82,8 @@ assert!(file.index() == 1);
 Prune old logs to avoid filling up the disk
 
 ```
-use std::io::Write;
-use tempdir::{TempDir,assert_correct_files};
+use std::{io::Write, path::Path};
+use tempdir::TempDir;
 use turnstiles::{PruneMethod, RotatingFile, RotationOption}; // Subcrate provided for testing
 let dir = TempDir::new();
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
@@ -93,15 +93,26 @@ let mut file = RotatingFile::new(
     RotationOption::SizeMB(1),
     PruneMethod::MaxFiles(3),
     false,
-).unwrap();
+)
+.unwrap();
 
-// Generate > 3 files
-for _ in 0..10 {
+// Generate > 3
+// (this will generate 10 files because we're only writing 990kb and rotating on 1mb)
+for _ in 0..20 {
     file.write_all(&data).unwrap();
 }
 
 // Should now only have the active file and two files with the highest index
-assert_correct_files(&dir.path,  vec!["ACTIVE_test.log", "test.log.3", "test.log.4"]);
+// (which will be 8 and 9 in this case)
+for i in 1..4 {
+    let path = &format!("{}/test.log.{}", &dir.path, i);
+    let file = Path::new(path);
+    if i < 8 {
+        assert!(!file.is_file());
+    } else {
+        assert!(file.is_file());
+    }
+}
 ```
 
 */
