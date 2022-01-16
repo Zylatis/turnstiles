@@ -15,15 +15,17 @@ Implemented/planned rotation conditions:
 This is currently in active development and may change/break often. Every effort will be taken to ensure that breaking changes that occur are reflected in a change of at least the minor version of the package, both in terms of the API and the generation of log files. Versions prior to 0.2.0 were so riddled with bugs I'm amazed I managed to put my pants on on those days I was writing it.
 
 ## Note:
-Currently this library only supports rotation by creating new files when a rotation is required, rather than creating a new file _and_ renaming existing files.
-For example if `my_file.log` is given then when the first rotation occurs a file with the name `my_file.log.1` will be created and written to. This means the latest file has the highest index, not the original filename. This is done to minimize surface area with the filesystem, but it is part of future work to potentially include the case where `my_file.log` is always the latest. 
+Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done. This works by keeping track
+of the 'active' file, the one currently being written to, which upon rotation is renamed to include the next log file index. For example when there is only one log file it will be `test_ACTIVE.log`, which when rotated will get renamed to `test.log.1` and the `test_ACTIVE.log` will represent a new file being written to. Originally no file renaming was done to keep the surface area with the filesystem as small as possible, however this has a few disadvantages and this active-file-approach (courtesy of [flex-logger](https://docs.rs/flexi_logger/latest/flexi_logger/)) was seen as a good compromise.
+
 
 # Examples
-Rotate when a log file exceeds a certain filesize
+Rotate when a log file exceeds a certain filesize without pruning or enforcing that each line end in a newline (will probably be removed soon/set to true internally)
 
 ```rust
 let data: Vec<u8> = vec![0; 500_000];
-let mut file = RotatingFile::new("test.log", RotationOption::SizeMB(1)).unwrap();
+// The `false` here is to do with require_newline and is only needed for async loggers
+let mut file = RotatingFile::new("test.log", RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
 // Write 500k to file creating test.log
 file.write(&data).unwrap();
 assert!(file.index() == 0);
@@ -33,7 +35,7 @@ file.write_all(&data).unwrap();
 assert!(file.index() == 0);
 
 // The check for rotation is done _before_ writing, so we don't rotate, and then write 500kb
-// so this file is 1.5mb now, still the same file
+// so this file is ~1.5mb now, still the same file
 file.write_all(&data).unwrap();
 assert!(file.index() == 0);
 
@@ -42,7 +44,7 @@ assert!(file.index() == 0);
 file.write_all(&data).unwrap();
 assert!(file.index() == 1);
 
-// Now have test.log and test.log.1
+// Now have test_ACTIVE.log and test.log.1
 ```
 
 Rotate when a log file is too old (based on filesystem metadata timestamps)
@@ -51,7 +53,7 @@ Rotate when a log file is too old (based on filesystem metadata timestamps)
 let max_log_age = Duration::from_millis(100);
 let data: Vec<u8> = vec![0; 1_000_000];
 let mut file =
-    RotatingFile::new(path, RotationOption::Duration(max_log_age)).unwrap();
+    RotatingFile::new(path, RotationOption::Duration(max_log_age), PruneMethod::None, false).unwrap();
 
 assert!(file.index() == 0);
 file.write_all(&data).unwrap();
@@ -68,7 +70,7 @@ file.write_all(&data).unwrap();
 assert!(file.index() == 1);
 file.write_all(&data).unwrap();
 assert!(file.index() == 1);
-// Will now have test.log and test.log.1
+// Will now have test_ACTIVE.log and test.log.1
 ```
 
 ## Future work
