@@ -1,12 +1,11 @@
-
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 /// Code for a TempDir struct to enable creating temporary, randomly named, directories for testing.
 /// Future work: make this an in-mem filesystem instead, maybe?
 use std::{
     fs::{create_dir_all, remove_dir_all},
     iter,
 };
-
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
+const N_DIR_NAME_CHARS: usize = 7;
 
 /// Temporary directory with a random name. When the struct is dropped, the directory and its contents are deleted
 pub struct TempDir {
@@ -18,7 +17,7 @@ impl TempDir {
         let chars: String = iter::repeat(())
             .map(|()| rng.sample(Alphanumeric))
             .map(char::from)
-            .take(7)
+            .take(N_DIR_NAME_CHARS)
             .collect();
         let path = chars;
         create_dir_all(&path).unwrap();

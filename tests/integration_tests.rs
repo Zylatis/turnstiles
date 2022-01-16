@@ -1,7 +1,6 @@
 use std::{collections::HashSet, fs, io::Write, thread::sleep, time::Duration};
-
 use tempdir::TempDir;
-use turnstiles::{RotatingFile, RotationOption};
+use turnstiles::{PruneMethod, RotatingFile, RotationOption};
 
 // Duplicated by doctests but i think that's okay? These have fn names, easier to interpret if failing...
 #[test]
@@ -9,7 +8,8 @@ fn test_file_size() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 500_000];
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
+    let mut file =
+        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
 
     file.write_all(&data).unwrap(); // write 500k to file
 
@@ -21,10 +21,7 @@ fn test_file_size() {
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 1);
-    assert_correct_files(
-        &dir.path,
-        vec!["test.log".to_string(), "test.log.1".to_string()],
-    );
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log", "test.log.1"]);
 }
 
 #[test]
@@ -32,7 +29,8 @@ fn test_file_size_no_rotate() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 1_000];
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
+    let mut file =
+        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 0);
@@ -40,10 +38,7 @@ fn test_file_size_no_rotate() {
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 0);
-    assert_correct_files(
-        &dir.path,
-        vec!["test.log".to_string(), "test.log".to_string()],
-    );
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log"]);
 }
 
 #[test]
@@ -55,6 +50,7 @@ fn test_file_duration() {
     let mut file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)),
+        PruneMethod::None,
         false,
     )
     .unwrap();
@@ -85,11 +81,7 @@ fn test_file_duration() {
 
     assert_correct_files(
         &dir.path,
-        vec![
-            "test.log".to_string(),
-            "test.log.1".to_string(),
-            "test.log.2".to_string(),
-        ],
+        vec!["ACTIVE_test.log", "test.log.1", "test.log.2"],
     );
 }
 
@@ -103,6 +95,7 @@ fn test_file_duration_delay_fail() {
     let mut file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)),
+        PruneMethod::None,
         false,
     )
     .unwrap();
@@ -128,6 +121,7 @@ fn test_no_dir_simple() {
     let mut file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)),
+        PruneMethod::None,
         false,
     )
     .unwrap();
@@ -145,6 +139,7 @@ fn test_no_dir_intermediate() {
     let mut file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)),
+        PruneMethod::None,
         false,
     )
     .unwrap();
@@ -160,7 +155,8 @@ fn test_data_integrity() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
+    let mut file =
+        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
     assert!(file.index() == 0);
 
     file.write_all(&vec![0; 600_000]).unwrap();
@@ -173,15 +169,13 @@ fn test_data_integrity() {
     assert!(file.index() == 1);
 
     // Original data
-    let data = fs::read(path).unwrap();
-    assert_eq!(data, vec![0; 1_200_000]);
-    // Rotated data
     let data = fs::read(format!("{}.1", path)).unwrap();
+    assert_eq!(data, vec![0; 1_200_000]);
+
+    // Rotated data
+    let data = fs::read(file.current_file_path_str()).unwrap();
     assert_eq!(data, vec![1; 600_000]);
-    assert_correct_files(
-        &dir.path,
-        vec!["test.log".to_string(), "test.log.1".to_string()],
-    );
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log", "test.log.1"]);
 }
 
 #[test]
@@ -189,7 +183,8 @@ fn test_restart() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 600_000];
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
+    let mut file =
+        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
 
     file.write_all(&data).unwrap();
 
@@ -201,13 +196,11 @@ fn test_restart() {
     assert!(file.index() == 1);
     file.write_all(&data).unwrap();
     assert!(file.index() == 1);
-    assert_correct_files(
-        &dir.path,
-        vec!["test.log".to_string(), "test.log.1".to_string()],
-    );
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log", "test.log.1"]);
     // Start again and make sure we pickup where we left off
     drop(file);
-    let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
+    let mut file =
+        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
 
     file.write_all(&data).unwrap();
 
@@ -222,12 +215,7 @@ fn test_restart() {
 
     assert_correct_files(
         &dir.path,
-        vec![
-            "test.log".to_string(),
-            "test.log.1".to_string(),
-            "test.log.2".to_string(),
-            "test.log.3".to_string(),
-        ],
+        vec!["ACTIVE_test.log", "test.log.1", "test.log.2", "test.log.3"],
     );
 }
 
@@ -245,6 +233,7 @@ fn test_slog_json_async() {
     let log_file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        PruneMethod::None,
         true,
     )
     .unwrap();
@@ -260,11 +249,7 @@ fn test_slog_json_async() {
         );
     }
     // TODO: tidy
-    let expected_files = vec![
-        "test.log".to_string(),
-        "test.log.1".to_string(),
-        "test.log.2".to_string(),
-    ];
+    let expected_files = vec!["ACTIVE_test.log", "test.log.1", "test.log.2"];
     assert_correct_files(&dir.path, expected_files.clone());
 
     for filename in expected_files {
@@ -291,6 +276,7 @@ fn test_slog_json_async_binary_fail() {
     let log_file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(100)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        PruneMethod::None,
         false,
     )
     .unwrap();
@@ -306,11 +292,7 @@ fn test_slog_json_async_binary_fail() {
         );
     }
     // TODO: tidy
-    let expected_files = vec![
-        "test.log".to_string(),
-        "test.log.1".to_string(),
-        "test.log.2".to_string(),
-    ];
+    let expected_files = vec!["ACTIVE_test.log", "test.log.1", "test.log.2"];
     assert_correct_files(&dir.path, expected_files.clone());
 
     for filename in expected_files {
@@ -344,6 +326,7 @@ fn test_slog_json_async_data_integrity() {
     let log_file = RotatingFile::new(
         path,
         RotationOption::Duration(Duration::from_millis(5)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        PruneMethod::None,
         true,
     )
     .unwrap();
@@ -369,9 +352,82 @@ fn test_slog_json_async_data_integrity() {
         }
     }
     // XOR the two sets (almost certainly a better way - retain mutates tho?)
-
     assert!(json_data.iter().filter(|x| !data.contains(*x)).count() == 0);
     assert!(data.iter().filter(|x| !json_data.contains(*x)).count() == 0);
+}
+
+#[test]
+fn test_file_number_prune() {
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let data: Vec<u8> = vec![0; 990_000];
+    let mut file = RotatingFile::new(
+        path,
+        RotationOption::SizeMB(1),
+        PruneMethod::MaxFiles(3),
+        false,
+    )
+    .unwrap();
+
+    for _ in 0..20 {
+        file.write_all(&data).unwrap();
+    }
+
+    assert_correct_files(
+        &dir.path,
+        vec!["ACTIVE_test.log", "test.log.8", "test.log.9"],
+    );
+}
+
+#[test]
+fn test_file_age_prune() {
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let data: Vec<u8> = vec![0; 990_000];
+    let mut file = RotatingFile::new(
+        path,
+        RotationOption::SizeMB(1),
+        PruneMethod::MaxAge(Duration::from_millis(1000)),
+        false,
+    )
+    .unwrap();
+
+    for _ in 0..20 {
+        file.write_all(&data).unwrap();
+    }
+    sleep(Duration::from_millis(1000));
+    file.write_all(&data).unwrap();
+    file.write_all(&data).unwrap();
+    assert_correct_files(&dir.path, vec!["ACTIVE_test.log"]);
+}
+
+#[test]
+fn test_invalid_options() {
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    assert!(RotatingFile::new(
+        path,
+        RotationOption::SizeMB(1),
+        PruneMethod::MaxAge(Duration::from_millis(1000)),
+        false,
+    )
+    .is_ok());
+
+    assert!(RotatingFile::new(
+        path,
+        RotationOption::SizeMB(0), // not valid
+        PruneMethod::MaxAge(Duration::from_millis(1000)),
+        false,
+    )
+    .is_err());
+
+    assert!(RotatingFile::new(
+        path,
+        RotationOption::SizeMB(1),
+        PruneMethod::MaxFiles(0), // not valid
+        false,
+    )
+    .is_err());
 }
 
 // Some helpers
@@ -384,9 +440,12 @@ fn get_dir_files_hashset(dir: &str) -> HashSet<String> {
     files
 }
 
-fn assert_correct_files(dir: &str, log_filenames: Vec<String>) {
-    // TODO change to ref of vec, prob doesn't need ownership
-    let log_files = get_dir_files_hashset(dir);
-    let expected: HashSet<String> = log_filenames.into_iter().collect();
-    assert_eq!(log_files, expected);
+fn assert_correct_files(dir: &str, log_filenames: Vec<&str>) {
+    // TODO: change to ref of vec, prob doesn't need ownership
+    // TODO: fix this complete shitshow
+    let log_files: HashSet<String> = get_dir_files_hashset(dir);
+    let log_files_str: HashSet<&str> = log_files.iter().map(AsRef::as_ref).collect();
+    let expected: HashSet<&str> = log_filenames.into_iter().collect();
+
+    assert_eq!(log_files_str, expected);
 }

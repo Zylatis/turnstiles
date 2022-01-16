@@ -1,24 +1,25 @@
 #![warn(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 /*!
-Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done.
-Currently this library only supports rotation by creating new files when a rotation is required, rather than renaming existing files.
-For example if `my_file.log` is given then when the first rotation occurs a file with the name `my_file.log.1` will be created and written to.
-This means the latest file has the highest index, not the original filename. This is done to minimize surface area with the filesystem, but it
-is part of future work to potentially include the case where `my_file.log` is always the latest.
+Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done. This works by keeping track
+of the 'active' file, the one currently being written to, which upon rotation is renamed to include the next log file index. For example when there is only one log file it will be
+`test_ACTIVE.log`, which when rotated will get renamed to `test.log.1` and the `test_ACTIVE.log` will represent a new file being written to. Originally no file renaming was done to keep
+the surface area with the filesystem as small as possible, however this has a few disadvantages and this active-file-approach (courtesy of (`flex-logger`)[`https://docs.rs/flexi_logger/latest/flexi_logger/`])
+was seen as a good compromise.
 
 # Examples
 Rotate when a log file exceeds a certain filesize
 
 ```
 use std::{io::Write, thread::sleep, time::Duration};
-use turnstiles::{RotatingFile, RotationOption};
-
+use turnstiles::{RotatingFile, RotationOption, PruneMethod};
 use tempdir::TempDir; // Subcrate provided for testing
 let dir = TempDir::new();
 
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 let data: Vec<u8> = vec![0; 500_000];
-let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), false).unwrap();
+// The `false` here is to do with require_newline and is only needed for async loggers
+let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false)
+                .unwrap();
 
 // Write 500k to file creating test.log
 file.write(&data).unwrap();
@@ -29,7 +30,7 @@ file.write_all(&data).unwrap();
 assert!(file.index() == 0);
 
 // The check for rotation is done _before_ writing, so we don't rotate, and then write 500kb
-// so this file is 1.5mb now, still the same file
+// so this file is ~1.5mb now, still the same file
 file.write_all(&data).unwrap();
 assert!(file.index() == 0);
 
@@ -39,23 +40,23 @@ assert!(file.index() == 0);
 file.write_all(&data).unwrap();
 assert!(file.index() == 1);
 
-// Now have test.log and test.log.1
+// Now have test_ACTIVE.log and test.log.1
 ```
 
 Rotate when a log file is too old (based on filesystem metadata timestamps)
 
 ```
 use std::{io::Write, thread::sleep, time::Duration};
-use turnstiles::{RotatingFile, RotationOption};
-
+use turnstiles::{RotatingFile, RotationOption, PruneMethod};
 use tempdir::TempDir; // Subcrate provided for testing
- let dir = TempDir::new();
+let dir = TempDir::new();
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
 let max_log_age = Duration::from_millis(100);
 let data: Vec<u8> = vec![0; 1_000_000];
 let mut file =
-    RotatingFile::new(path, RotationOption::Duration(max_log_age), false).unwrap();
+    RotatingFile::new(path, RotationOption::Duration(max_log_age), PruneMethod::None, false)
+        .unwrap();
 
 assert!(file.index() == 0);
 file.write_all(&data).unwrap();
@@ -73,10 +74,50 @@ assert!(file.index() == 1);
 file.write_all(&data).unwrap();
 assert!(file.index() == 1);
 
-// Will now have test.log and test.log.1
+// Will now have test_ACTIVE.log and test.log.1
 ```
+
+
+Prune old logs to avoid filling up the disk
+
+```
+use std::{io::Write, path::Path};
+use tempdir::TempDir;
+use turnstiles::{PruneMethod, RotatingFile, RotationOption}; // Subcrate provided for testing
+let dir = TempDir::new();
+let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+let data: Vec<u8> = vec![0; 990_000];
+let mut file = RotatingFile::new(
+    path,
+    RotationOption::SizeMB(1),
+    PruneMethod::MaxFiles(3),
+    false,
+)
+.unwrap();
+
+// Generate > 3
+// (this will generate 10 files because we're only writing 990kb and rotating on 1mb)
+for _ in 0..20 {
+    file.write_all(&data).unwrap();
+}
+
+// Should now only have the active file and two files with the highest index
+// (which will be 8 and 9 in this case)
+for i in 1..4 {
+    let path = &format!("{}/test.log.{}", &dir.path, i);
+    let file = Path::new(path);
+    if i < 8 {
+        assert!(!file.is_file());
+    } else {
+        assert!(file.is_file());
+    }
+}
+```
+
 */
 use anyhow::{bail, Result};
+use std::fs::remove_file;
+use std::time::SystemTime;
 use std::{cmp, fs};
 use std::{
     fs::{File, Metadata, OpenOptions},
@@ -88,47 +129,68 @@ use utils::{filename_to_details, safe_unwrap_osstr};
 
 // TODO: template this maybe? Or just make it u128 and fugheddaboutit?
 type FileIndexInt = u32;
+const ACTIVE_PREFIX: &str = "ACTIVE_";
+const BYTES_TO_MB: u64 = 1_048_576;
 #[derive(Debug)]
 /// Struct masquerades as a file handle and is written to by whatever you like
 pub struct RotatingFile {
     filename_root: String,
-    rotation: RotationOption,
+    active_file_path: String,
+    rotation_method: RotationOption,
+    prune_method: PruneMethod,
     current_file: File,
     index: FileIndexInt,
     require_newline: bool, // Should be type to avoid runtime cost?
+    parent: String,
 }
 
 impl RotatingFile {
     /// Create a new RotatingFile given a desired filename and rotation option. The filename represents the stem or root of the files
     /// to be generated.
-    pub fn new(path_str: &str, rotation: RotationOption, require_newline: bool) -> Result<Self> {
+    pub fn new(
+        path_str: &str,
+        rotation_method: RotationOption,
+        prune_method: PruneMethod,
+        require_newline: bool,
+    ) -> Result<Self> {
+        Self::check_options(&rotation_method, &prune_method)?;
         // TODO: throw error if path_str (rootname) ends in digit as this will break the numbering stuff
         let (path_filename, parent) = filename_to_details(path_str)?;
+        let active_file_path = format!("{}/{}{}", parent, ACTIVE_PREFIX, path_filename);
         let current_index = Self::detect_latest_file_index(&path_filename, &parent)?;
-        let current_filename = if current_index != 0 {
-            format!("{}.{}", path_filename, current_index)
-        } else {
-            path_filename
-        };
-        let current_file_path = format!("{}/{}", parent, current_filename);
+
         let file = OpenOptions::new()
             .create(true)
             .write(true)
             .append(true)
-            .open(current_file_path)?;
+            .open(active_file_path.clone())?;
         Ok(Self {
-            rotation,
+            rotation_method,
+            prune_method,
             current_file: file,
             index: current_index,
-            filename_root: path_str.to_string(),
+            filename_root: path_filename,
             require_newline,
+            active_file_path,
+            parent,
         })
+    }
+
+    fn check_options(rotation_method: &RotationOption, prune_method: &PruneMethod) -> Result<()> {
+        if let RotationOption::SizeMB(0) = rotation_method {
+            bail!("Invalid rotation option RotationOption::SizeMB(0)");
+        }
+        if let PruneMethod::MaxFiles(0) = prune_method {
+            bail!("Invalid prune method PruneMethod::MaxFiles(0)");
+        }
+        Ok(())
     }
 
     /// Given a filename stem and folder path, list all files which contain the filename stem.
     /// Note: this currently literally does a .contains() check rather than verifying more carefully, but this a TODO.
-    fn list_log_files(filename: &str, folder_path: &str) -> Result<Vec<String>> {
+    fn list_log_files(filename: &str, folder_path: &str) -> Result<Vec<String>, std::io::Error> {
         let files = fs::read_dir(&folder_path)?;
+
         let mut log_files = vec![];
         for f in files {
             let filename_str = safe_unwrap_osstr(&f?.file_name())?;
@@ -136,6 +198,7 @@ impl RotatingFile {
                 log_files.push(filename_str);
             }
         }
+
         Ok(log_files)
     }
 
@@ -148,7 +211,7 @@ impl RotatingFile {
         let log_files = Self::list_log_files(filename, folder_path)?;
         let mut max_index = 0;
         for filename_string in log_files {
-            if filename_string == filename {
+            if filename_string == format!("{}{}", ACTIVE_PREFIX, filename) {
                 continue;
             } else {
                 let file_index = match filename_string.split('.').last() {
@@ -167,13 +230,20 @@ impl RotatingFile {
     fn rotate_current_file(&mut self) -> Result<(), std::io::Error> {
         // TODO: think about if we want to be more careful here, i.e. append to a random file which may already exist and be a totally different format?
         // Could throw an exception, or print a warning and skip that file index. Who logs the loggers...
-        let new_file = &format!("{}.{}", self.filename_root, self.index + 1);
+
+        // TODO: fix naughtyness of renaming file while handle still open, should prob be an option which we take and shutdown
+        let new_file = &format!("{}/{}.{}", self.parent, self.filename_root, self.index + 1);
+        fs::rename(&self.active_file_path, new_file)?;
+
         self.current_file = OpenOptions::new()
             .create(true)
             .write(true)
             .append(true)
-            .open(new_file)?;
+            .open(&self.active_file_path)?;
         self.index += 1; // Only do this once the above results have passed.
+
+        // TODO: Goes here or in write?
+        self.prune_logs()?;
         Ok(())
     }
 
@@ -181,9 +251,9 @@ impl RotatingFile {
     /// NOTE: this currently does no check to see if the file rotation option has changed for a given set of logs, but this will never result in dataloss
     /// just maybe some confusingly-sized logs
     fn rotation_required(&mut self) -> Result<bool, std::io::Error> {
-        let rotate = match self.rotation {
+        let rotate = match self.rotation_method {
             RotationOption::None => false,
-            RotationOption::SizeMB(size) => self.file_metadata()?.len() > size * 1_048_576,
+            RotationOption::SizeMB(size) => self.file_metadata()?.len() > size * BYTES_TO_MB,
             // RotationOption::SizeLines(len) => false,
             RotationOption::Duration(duration) => {
                 match self.file_metadata()?.created()?.elapsed() {
@@ -197,9 +267,50 @@ impl RotatingFile {
         };
         Ok(rotate)
     }
+
+    fn prune_logs(&mut self) -> Result<(), std::io::Error> {
+        // TODO: tidy this horribleness and seek out corner cases
+        let log_file_list = Self::list_log_files(&self.filename_root, &self.parent)?;
+
+        match self.prune_method {
+            PruneMethod::None => {}
+            PruneMethod::MaxAge(d) => {
+                let modified_cutoff = SystemTime::now() - d;
+                for filename in log_file_list {
+                    let path = format!("{}/{}", self.parent, filename);
+                    let metadata = fs::metadata(&path)?;
+                    if metadata.modified()? < modified_cutoff {
+                        remove_file(path)?;
+                    }
+                }
+            }
+            PruneMethod::MaxFiles(n) => {
+                let index_u = self.index as usize;
+                // This works but I hate it; juggling usize stuff
+                if log_file_list.len() > n - 1 && index_u + 2 > 1 + n {
+                    for i in 1..index_u - n + 2 {
+                        let file_to_delete = &format!("{}.{}", self.filename_root, i);
+                        if log_file_list.contains(file_to_delete) {
+                            remove_file(format!("{}/{}", self.parent, file_to_delete))?;
+                        }
+                    }
+                }
+            }
+        };
+        Ok(())
+    }
+
     fn file_metadata(&self) -> Result<Metadata, std::io::Error> {
         self.current_file.sync_all()?;
         self.current_file.metadata()
+    }
+
+    pub fn current_file(&self) -> &File {
+        &self.current_file
+    }
+
+    pub fn current_file_path_str(&self) -> &str {
+        &self.active_file_path
     }
 }
 
@@ -234,6 +345,13 @@ impl io::Write for RotatingFile {
 pub enum RotationOption {
     None,
     SizeMB(u64),
-    // SizeLines(u64),
     Duration(Duration),
+    // SizeLines(u64),
+}
+/// Enum for possible file prune options.
+#[derive(Debug)]
+pub enum PruneMethod {
+    None,
+    MaxFiles(usize),
+    MaxAge(Duration),
 }
