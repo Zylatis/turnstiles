@@ -1,5 +1,4 @@
 use std::{collections::HashSet, fs, io::Write, thread::sleep, time::Duration};
-
 use tempdir::TempDir;
 use turnstiles::{PruneMethod, RotatingFile, RotationOption};
 
@@ -400,6 +399,35 @@ fn test_file_age_prune() {
     file.write_all(&data).unwrap();
     file.write_all(&data).unwrap();
     assert_correct_files(&dir.path, vec!["ACTIVE_test.log"]);
+}
+
+#[test]
+fn test_invalid_options() {
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    assert!(RotatingFile::new(
+        path,
+        RotationOption::SizeMB(1),
+        PruneMethod::MaxAge(Duration::from_millis(1000)),
+        false,
+    )
+    .is_ok());
+
+    assert!(RotatingFile::new(
+        path,
+        RotationOption::SizeMB(0), // not valid
+        PruneMethod::MaxAge(Duration::from_millis(1000)),
+        false,
+    )
+    .is_err());
+
+    assert!(RotatingFile::new(
+        path,
+        RotationOption::SizeMB(1),
+        PruneMethod::MaxFiles(0), // not valid
+        false,
+    )
+    .is_err());
 }
 
 // Some helpers

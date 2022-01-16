@@ -12,7 +12,6 @@ Rotate when a log file exceeds a certain filesize
 ```
 use std::{io::Write, thread::sleep, time::Duration};
 use turnstiles::{RotatingFile, RotationOption, PruneMethod};
-
 use tempdir::TempDir; // Subcrate provided for testing
 let dir = TempDir::new();
 
@@ -153,6 +152,7 @@ impl RotatingFile {
         prune_method: PruneMethod,
         require_newline: bool,
     ) -> Result<Self> {
+        Self::check_options(&rotation_method, &prune_method)?;
         // TODO: throw error if path_str (rootname) ends in digit as this will break the numbering stuff
         let (path_filename, parent) = filename_to_details(path_str)?;
         let active_file_path = format!("{}/{}{}", parent, ACTIVE_PREFIX, path_filename);
@@ -173,6 +173,16 @@ impl RotatingFile {
             active_file_path,
             parent,
         })
+    }
+
+    fn check_options(rotation_method: &RotationOption, prune_method: &PruneMethod) -> Result<()> {
+        if let RotationOption::SizeMB(0) = rotation_method {
+            bail!("Invalid rotation option RotationOption::SizeMB(0)");
+        }
+        if let PruneMethod::MaxFiles(0) = prune_method {
+            bail!("Invalid prune method PruneMethod::MaxFiles(0)");
+        }
+        Ok(())
     }
 
     /// Given a filename stem and folder path, list all files which contain the filename stem.
