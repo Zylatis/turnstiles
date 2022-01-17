@@ -184,8 +184,8 @@ impl RotatingFile {
     }
 
     fn check_options(
-        rotation_conditions: &Vec<RotationCondition>,
-        prune_conditions: &Vec<PruneCondition>,
+        rotation_conditions: &[RotationCondition],
+        prune_conditions: &[PruneCondition],
     ) -> Result<()> {
         // TODO: collect all errors at once to stop piecemeal error reporting, which I loathe
         for r_condition in rotation_conditions {
