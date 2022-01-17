@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fs, io::Write, thread::sleep, time::Duration};
 use tempdir::TempDir;
-use turnstiles::{PruneMethod, RotatingFile, RotationOption};
+use turnstiles::{PruneMethod, RotatingFile, RotationMethod};
 
 // Duplicated by doctests but i think that's okay? These have fn names, easier to interpret if failing...
 #[test]
@@ -9,7 +9,7 @@ fn test_file_size() {
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 500_000];
     let mut file =
-        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
+        RotatingFile::new(path, RotationMethod::SizeMB(1), PruneMethod::None, false).unwrap();
 
     file.write_all(&data).unwrap(); // write 500k to file
 
@@ -30,7 +30,7 @@ fn test_file_size_no_rotate() {
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 1_000];
     let mut file =
-        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
+        RotatingFile::new(path, RotationMethod::SizeMB(1), PruneMethod::None, false).unwrap();
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 0);
@@ -49,7 +49,7 @@ fn test_file_duration() {
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
     let mut file = RotatingFile::new(
         path,
-        RotationOption::Duration(Duration::from_millis(100)),
+        RotationMethod::Duration(Duration::from_millis(100)),
         PruneMethod::None,
         false,
     )
@@ -94,7 +94,7 @@ fn test_file_duration_delay_fail() {
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
     let mut file = RotatingFile::new(
         path,
-        RotationOption::Duration(Duration::from_millis(100)),
+        RotationMethod::Duration(Duration::from_millis(100)),
         PruneMethod::None,
         false,
     )
@@ -120,7 +120,7 @@ fn test_no_dir_simple() {
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
     let mut file = RotatingFile::new(
         path,
-        RotationOption::Duration(Duration::from_millis(100)),
+        RotationMethod::Duration(Duration::from_millis(100)),
         PruneMethod::None,
         false,
     )
@@ -138,7 +138,7 @@ fn test_no_dir_intermediate() {
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
     let mut file = RotatingFile::new(
         path,
-        RotationOption::Duration(Duration::from_millis(100)),
+        RotationMethod::Duration(Duration::from_millis(100)),
         PruneMethod::None,
         false,
     )
@@ -156,7 +156,7 @@ fn test_data_integrity() {
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
     let mut file =
-        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
+        RotatingFile::new(path, RotationMethod::SizeMB(1), PruneMethod::None, false).unwrap();
     assert!(file.index() == 0);
 
     file.write_all(&vec![0; 600_000]).unwrap();
@@ -184,7 +184,7 @@ fn test_restart() {
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 600_000];
     let mut file =
-        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
+        RotatingFile::new(path, RotationMethod::SizeMB(1), PruneMethod::None, false).unwrap();
 
     file.write_all(&data).unwrap();
 
@@ -200,7 +200,7 @@ fn test_restart() {
     // Start again and make sure we pickup where we left off
     drop(file);
     let mut file =
-        RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
+        RotatingFile::new(path, RotationMethod::SizeMB(1), PruneMethod::None, false).unwrap();
 
     file.write_all(&data).unwrap();
 
@@ -232,7 +232,7 @@ fn test_slog_json_async() {
 
     let log_file = RotatingFile::new(
         path,
-        RotationOption::Duration(Duration::from_millis(100)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        RotationMethod::Duration(Duration::from_millis(100)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
         PruneMethod::None,
         true,
     )
@@ -275,7 +275,7 @@ fn test_slog_json_async_binary_fail() {
     // TODO: refactor common bits of these two tests
     let log_file = RotatingFile::new(
         path,
-        RotationOption::Duration(Duration::from_millis(100)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        RotationMethod::Duration(Duration::from_millis(100)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
         PruneMethod::None,
         false,
     )
@@ -325,7 +325,7 @@ fn test_slog_json_async_data_integrity() {
 
     let log_file = RotatingFile::new(
         path,
-        RotationOption::Duration(Duration::from_millis(5)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        RotationMethod::Duration(Duration::from_millis(5)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
         PruneMethod::None,
         true,
     )
@@ -363,7 +363,7 @@ fn test_file_number_prune() {
     let data: Vec<u8> = vec![0; 990_000];
     let mut file = RotatingFile::new(
         path,
-        RotationOption::SizeMB(1),
+        RotationMethod::SizeMB(1),
         PruneMethod::MaxFiles(3),
         false,
     )
@@ -386,7 +386,7 @@ fn test_file_age_prune() {
     let data: Vec<u8> = vec![0; 990_000];
     let mut file = RotatingFile::new(
         path,
-        RotationOption::SizeMB(1),
+        RotationMethod::SizeMB(1),
         PruneMethod::MaxAge(Duration::from_millis(1000)),
         false,
     )
@@ -407,7 +407,7 @@ fn test_invalid_options() {
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
     assert!(RotatingFile::new(
         path,
-        RotationOption::SizeMB(1),
+        RotationMethod::SizeMB(1),
         PruneMethod::MaxAge(Duration::from_millis(1000)),
         false,
     )
@@ -415,7 +415,7 @@ fn test_invalid_options() {
 
     assert!(RotatingFile::new(
         path,
-        RotationOption::SizeMB(0), // not valid
+        RotationMethod::SizeMB(0), // not valid
         PruneMethod::MaxAge(Duration::from_millis(1000)),
         false,
     )
@@ -423,7 +423,7 @@ fn test_invalid_options() {
 
     assert!(RotatingFile::new(
         path,
-        RotationOption::SizeMB(1),
+        RotationMethod::SizeMB(1),
         PruneMethod::MaxFiles(0), // not valid
         false,
     )

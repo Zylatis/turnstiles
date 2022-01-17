@@ -136,7 +136,7 @@ const BYTES_TO_MB: u64 = 1_048_576;
 pub struct RotatingFile {
     filename_root: String,
     active_file_path: String,
-    rotation_method: RotationOption,
+    rotation_method: RotationMethod,
     prune_method: PruneMethod,
     current_file: File,
     index: FileIndexInt,
@@ -149,7 +149,7 @@ impl RotatingFile {
     /// to be generated.
     pub fn new(
         path_str: &str,
-        rotation_method: RotationOption,
+        rotation_method: RotationMethod,
         prune_method: PruneMethod,
         require_newline: bool,
     ) -> Result<Self> {
@@ -176,8 +176,8 @@ impl RotatingFile {
         })
     }
 
-    fn check_options(rotation_method: &RotationOption, prune_method: &PruneMethod) -> Result<()> {
-        if let RotationOption::SizeMB(0) = rotation_method {
+    fn check_options(rotation_method: &RotationMethod, prune_method: &PruneMethod) -> Result<()> {
+        if let RotationMethod::SizeMB(0) = rotation_method {
             bail!("Invalid rotation option RotationOption::SizeMB(0)");
         }
         if let PruneMethod::MaxFiles(0) = prune_method {
@@ -252,10 +252,10 @@ impl RotatingFile {
     /// just maybe some confusingly-sized logs
     fn rotation_required(&mut self) -> Result<bool, std::io::Error> {
         let rotate = match self.rotation_method {
-            RotationOption::None => false,
-            RotationOption::SizeMB(size) => self.file_metadata()?.len() > size * BYTES_TO_MB,
+            RotationMethod::None => false,
+            RotationMethod::SizeMB(size) => self.file_metadata()?.len() > size * BYTES_TO_MB,
             // RotationOption::SizeLines(len) => false,
-            RotationOption::Duration(duration) => {
+            RotationMethod::Duration(duration) => {
                 match self.file_metadata()?.created()?.elapsed() {
                     Ok(elapsed) => elapsed > duration,
                     Err(e) => {
@@ -342,7 +342,7 @@ impl io::Write for RotatingFile {
 
 /// Enum for possible file rotation options.
 #[derive(Debug)]
-pub enum RotationOption {
+pub enum RotationMethod {
     None,
     SizeMB(u64),
     Duration(Duration),
