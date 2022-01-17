@@ -26,7 +26,7 @@ fn test_file_size() {
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 1);
-    assert_correct_files(&dir.path, vec!["ACTIVE_test.log", "test.log.1"]);
+    assert_correct_files(&dir.path, vec![file.current_file_name_str(), "test.log.1"]);
 }
 
 #[test]
@@ -48,7 +48,7 @@ fn test_file_size_no_rotate() {
     assert!(file.index() == 0);
     file.write_all(&data).unwrap();
     assert!(file.index() == 0);
-    assert_correct_files(&dir.path, vec!["ACTIVE_test.log"]);
+    assert_correct_files(&dir.path, vec![file.current_file_name_str()]);
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn test_file_duration() {
 
     assert_correct_files(
         &dir.path,
-        vec!["ACTIVE_test.log", "test.log.1", "test.log.2"],
+        vec![file.current_file_name_str(), "test.log.1", "test.log.2"],
     );
 }
 
@@ -190,7 +190,7 @@ fn test_data_integrity() {
     // Rotated data
     let data = fs::read(file.current_file_path_str()).unwrap();
     assert_eq!(data, vec![1; 600_000]);
-    assert_correct_files(&dir.path, vec!["ACTIVE_test.log", "test.log.1"]);
+    assert_correct_files(&dir.path, vec![file.current_file_name_str(), "test.log.1"]);
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn test_restart() {
     assert!(file.index() == 1);
     file.write_all(&data).unwrap();
     assert!(file.index() == 1);
-    assert_correct_files(&dir.path, vec!["ACTIVE_test.log", "test.log.1"]);
+    assert_correct_files(&dir.path, vec![file.current_file_name_str(), "test.log.1"]);
     // Start again and make sure we pickup where we left off
     drop(file);
     let mut file = RotatingFile::new(
@@ -240,7 +240,12 @@ fn test_restart() {
 
     assert_correct_files(
         &dir.path,
-        vec!["ACTIVE_test.log", "test.log.1", "test.log.2", "test.log.3"],
+        vec![
+            file.current_file_name_str(),
+            "test.log.1",
+            "test.log.2",
+            "test.log.3",
+        ],
     );
 }
 
@@ -262,6 +267,7 @@ fn test_slog_json_async() {
         true,
     )
     .unwrap();
+    let active_fn = log_file.current_file_name_str().to_string();
 
     let log_drain = slog_json::Json::default(log_file);
     let logger = Logger::root(Mutex::new(log_drain).fuse(), o!());
@@ -274,7 +280,7 @@ fn test_slog_json_async() {
         );
     }
     // TODO: tidy
-    let expected_files = vec!["ACTIVE_test.log", "test.log.1", "test.log.2"];
+    let expected_files = vec![active_fn.as_ref(), "test.log.1", "test.log.2"];
     assert_correct_files(&dir.path, expected_files.clone());
 
     for filename in expected_files {
@@ -305,7 +311,7 @@ fn test_slog_json_async_binary_fail() {
         false,
     )
     .unwrap();
-
+    let active_fn = log_file.current_file_name_str().to_string();
     let log_drain = slog_json::Json::default(log_file);
     let logger = Logger::root(Mutex::new(log_drain).fuse(), o!());
 
@@ -317,7 +323,7 @@ fn test_slog_json_async_binary_fail() {
         );
     }
     // TODO: tidy
-    let expected_files = vec!["ACTIVE_test.log", "test.log.1", "test.log.2"];
+    let expected_files = vec![active_fn.as_ref(), "test.log.1", "test.log.2"];
     assert_correct_files(&dir.path, expected_files.clone());
 
     for filename in expected_files {
@@ -400,7 +406,7 @@ fn test_file_number_prune() {
 
     assert_correct_files(
         &dir.path,
-        vec!["ACTIVE_test.log", "test.log.8", "test.log.9"],
+        vec![file.current_file_name_str(), "test.log.8", "test.log.9"],
     );
 }
 
@@ -423,7 +429,7 @@ fn test_file_age_prune() {
     sleep(Duration::from_millis(1000));
     file.write_all(&data).unwrap();
     file.write_all(&data).unwrap();
-    assert_correct_files(&dir.path, vec!["ACTIVE_test.log"]);
+    assert_correct_files(&dir.path, vec![file.current_file_name_str()]);
 }
 
 #[test]

@@ -129,13 +129,18 @@ use utils::{filename_to_details, safe_unwrap_osstr};
 
 // TODO: template this maybe? Or just make it u128 and fugheddaboutit?
 type FileIndexInt = u32;
-const ACTIVE_PREFIX: &str = "ACTIVE_";
 const BYTES_TO_MB: u64 = 1_048_576;
+
+// Changed from prefix to suffix here to make wildcarding less of a faff.
+fn active_filename(root_filename: &str) -> String {
+    format!("{}{}", root_filename, ".ACTIVE")
+}
 #[derive(Debug)]
 /// Struct masquerades as a file handle and is written to by whatever you like
 pub struct RotatingFile {
     filename_root: String,
     active_file_path: String,
+    active_file_name: String,
     rotation_method: RotationCondition,
     prune_method: PruneCondition,
     current_file: File,
@@ -156,7 +161,8 @@ impl RotatingFile {
         Self::check_options(&rotation_method, &prune_method)?;
         // TODO: throw error if path_str (rootname) ends in digit as this will break the numbering stuff
         let (path_filename, parent) = filename_to_details(path_str)?;
-        let active_file_path = format!("{}/{}{}", parent, ACTIVE_PREFIX, path_filename);
+        let active_file_name = active_filename(&path_filename);
+        let active_file_path = format!("{}/{}", parent, &active_file_name);
         let current_index = Self::detect_latest_file_index(&path_filename, &parent)?;
 
         let file = OpenOptions::new()
@@ -172,6 +178,7 @@ impl RotatingFile {
             filename_root: path_filename,
             require_newline,
             active_file_path,
+            active_file_name,
             parent,
         })
     }
@@ -181,10 +188,10 @@ impl RotatingFile {
         prune_method: &PruneCondition,
     ) -> Result<()> {
         if let RotationCondition::SizeMB(0) = rotation_method {
-            bail!("Invalid rotation option RotationCondition::SizeMB(0)");
+            bail!("Invalid option: RotationCondition::SizeMB(0)");
         }
         if let PruneCondition::MaxFiles(0) = prune_method {
-            bail!("Invalid prune method PruneCondition::MaxFiles(0)");
+            bail!("Invalid option: PruneCondition::MaxFiles(0)");
         }
         Ok(())
     }
@@ -214,8 +221,7 @@ impl RotatingFile {
         let log_files = Self::list_log_files(filename, folder_path)?;
         let mut max_index = 0;
         for filename_string in log_files {
-            if filename_string == format!("{}{}", ACTIVE_PREFIX, filename)
-                || filename_string == filename
+            if filename_string == active_filename(filename) || filename_string == filename
             // 2nd condition prevents backwards-incompat-induced panics where we have the old test.log file and it tries to get an int from it
             {
                 continue;
@@ -317,6 +323,10 @@ impl RotatingFile {
 
     pub fn current_file_path_str(&self) -> &str {
         &self.active_file_path
+    }
+
+    pub fn current_file_name_str(&self) -> &str {
+        &self.active_file_name
     }
 }
 
