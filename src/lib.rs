@@ -125,6 +125,7 @@ use std::{
     time::Duration,
 };
 mod utils;
+use regex::Regex;
 use utils::{filename_to_details, safe_unwrap_osstr};
 
 // TODO: template this maybe? Or just make it u128 and fugheddaboutit?
@@ -183,6 +184,7 @@ impl RotatingFile {
         })
     }
 
+    /// Check we're given valid options on startup
     fn check_options(
         rotation_method: &RotationCondition,
         prune_method: &PruneCondition,
@@ -196,15 +198,21 @@ impl RotatingFile {
         Ok(())
     }
 
-    /// Given a filename stem and folder path, list all files which contain the filename stem.
-    /// Note: this currently literally does a .contains() check rather than verifying more carefully, but this a TODO.
-    fn list_log_files(filename: &str, folder_path: &str) -> Result<Vec<String>, std::io::Error> {
+    /// Given a filename stem and folder path, list all files which are the `filename.<index>` (where filename includes the extension).
+    /// Uses regex to match on `r"^<filename>.[0-9]+$"`
+    fn list_rotated_log_files(
+        filename: &str,
+        folder_path: &str,
+    ) -> Result<Vec<String>, std::io::Error> {
+        // This will exclude active files.
+        let re = Regex::new(&format!(r"^{}.[0-9]+$", filename)).unwrap();
         let files = fs::read_dir(&folder_path)?;
 
         let mut log_files = vec![];
         for f in files {
             let filename_str = safe_unwrap_osstr(&f?.file_name())?;
-            if filename_str.contains(filename) {
+            // if filename_str.contains(filename) {
+            if re.is_match(&filename_str) {
                 log_files.push(filename_str);
             }
         }
@@ -218,23 +226,23 @@ impl RotatingFile {
     }
     /// Given a filename stem and folder path find the highest index so where know where to pick up after we left off in a previous incarnation
     fn detect_latest_file_index(filename: &str, folder_path: &str) -> Result<FileIndexInt> {
-        let log_files = Self::list_log_files(filename, folder_path)?;
+        let log_files = Self::list_rotated_log_files(filename, folder_path)?;
         let mut max_index = 0;
         for filename_string in log_files {
-            if filename_string == active_filename(filename) || filename_string == filename
-            // 2nd condition prevents backwards-incompat-induced panics where we have the old test.log file and it tries to get an int from it
-            {
-                continue;
-            } else {
-                let file_index = match filename_string.split('.').last() {
-                    None => bail!("Found log file ending in '.', can't process index."),
-                    Some(s) => s,
-                };
+            // if filename_string == active_filename(filename) || filename_string == filename
+            // // 2nd condition prevents backwards-incompat-induced panics where we have the old test.log file and it tries to get an int from it
+            // {
+            //     continue;
+            // } else {
+            let file_index = match filename_string.split('.').last() {
+                None => bail!("Found log file ending in '.', can't process index."),
+                Some(s) => s,
+            };
 
-                let i = file_index.parse::<FileIndexInt>()?;
-                max_index = cmp::max(i, max_index);
-            }
+            let i = file_index.parse::<FileIndexInt>()?;
+            max_index = cmp::max(i, max_index);
         }
+        // }
         Ok(max_index)
     }
 
@@ -282,7 +290,7 @@ impl RotatingFile {
 
     fn prune_logs(&mut self) -> Result<(), std::io::Error> {
         // TODO: tidy this horribleness and seek out corner cases
-        let log_file_list = Self::list_log_files(&self.filename_root, &self.parent)?;
+        let log_file_list = Self::list_rotated_log_files(&self.filename_root, &self.parent)?;
 
         match self.prune_method {
             PruneCondition::None => {}
