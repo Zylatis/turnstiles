@@ -6,6 +6,8 @@ of the 'active' file, the one currently being written to, which upon rotation is
 the surface area with the filesystem as small as possible, however this has a few disadvantages and this active-file-approach (courtesy of (`flex-logger`)[`https://docs.rs/flexi_logger/latest/flexi_logger/`])
 was seen as a good compromise.
 
+Multiple rotation and prune conditions can be given and if _any_ in the set are satisfied, rotation/prune respectively will occur, according to that condition.
+
 # Examples
 Rotate when a log file exceeds a certain filesize
 
@@ -152,7 +154,7 @@ pub struct RotatingFile {
 }
 
 impl RotatingFile {
-    /// Create a new RotatingFile given a desired filename and rotation option. The filename represents the stem or root of the files
+    /// Create a new RotatingFile given a desired file path and rotation/prune options. The filename component of the path represents the stem or root of the files
     /// to be generated.
     pub fn new(
         path_str: &str,
