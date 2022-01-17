@@ -211,7 +211,10 @@ impl RotatingFile {
         let log_files = Self::list_log_files(filename, folder_path)?;
         let mut max_index = 0;
         for filename_string in log_files {
-            if filename_string == format!("{}{}", ACTIVE_PREFIX, filename) {
+            if filename_string == format!("{}{}", ACTIVE_PREFIX, filename)
+                || filename_string == filename
+            // 2nd condition prevents backwards-incompat-induced panics where we have the old test.log file and it tries to get an int from it
+            {
                 continue;
             } else {
                 let file_index = match filename_string.split('.').last() {
