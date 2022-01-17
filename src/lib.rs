@@ -11,15 +11,20 @@ Rotate when a log file exceeds a certain filesize
 
 ```
 use std::{io::Write, thread::sleep, time::Duration};
-use turnstiles::{RotatingFile, RotationOption, PruneMethod};
-use tempdir::TempDir; // Subcrate provided for testing
+use tempdir::TempDir;
+use turnstiles::{PruneCondition, RotatingFile, RotationCondition}; // Subcrate provided for testing
 let dir = TempDir::new();
 
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 let data: Vec<u8> = vec![0; 500_000];
 // The `false` here is to do with require_newline and is only needed for async loggers
-let mut file = RotatingFile::new(path, RotationOption::SizeMB(1), PruneMethod::None, false)
-                .unwrap();
+let mut file = RotatingFile::new(
+    path,
+    vec![RotationCondition::SizeMB(1)],
+    vec![PruneCondition::None],
+    false,
+)
+.unwrap();
 
 // Write 500k to file creating test.log
 file.write(&data).unwrap();
@@ -34,12 +39,10 @@ assert!(file.index() == 0);
 file.write_all(&data).unwrap();
 assert!(file.index() == 0);
 
-
 // Now we check if we need to rotate before writing, and it's 1.5mb > the rotation option so
 // we make a new file and  write to that
 file.write_all(&data).unwrap();
 assert!(file.index() == 1);
-
 // Now have test_ACTIVE.log and test.log.1
 ```
 
@@ -47,16 +50,20 @@ Rotate when a log file is too old (based on filesystem metadata timestamps)
 
 ```
 use std::{io::Write, thread::sleep, time::Duration};
-use turnstiles::{RotatingFile, RotationOption, PruneMethod};
-use tempdir::TempDir; // Subcrate provided for testing
+use tempdir::TempDir;
+use turnstiles::{PruneCondition, RotatingFile, RotationCondition}; // Subcrate provided for testing
 let dir = TempDir::new();
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
 let max_log_age = Duration::from_millis(100);
 let data: Vec<u8> = vec![0; 1_000_000];
-let mut file =
-    RotatingFile::new(path, RotationOption::Duration(max_log_age), PruneMethod::None, false)
-        .unwrap();
+let mut file = RotatingFile::new(
+    path,
+    vec![RotationCondition::Duration(max_log_age)],
+    vec![PruneCondition::None],
+    false,
+)
+.unwrap();
 
 assert!(file.index() == 0);
 file.write_all(&data).unwrap();
@@ -83,14 +90,14 @@ Prune old logs to avoid filling up the disk
 ```
 use std::{io::Write, path::Path};
 use tempdir::TempDir;
-use turnstiles::{PruneMethod, RotatingFile, RotationOption}; // Subcrate provided for testing
+use turnstiles::{PruneCondition, RotatingFile, RotationCondition}; // Subcrate provided for testing
 let dir = TempDir::new();
 let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 let data: Vec<u8> = vec![0; 990_000];
 let mut file = RotatingFile::new(
     path,
-    RotationOption::SizeMB(1),
-    PruneMethod::MaxFiles(3),
+    vec![RotationCondition::SizeMB(1)],
+    vec![PruneCondition::MaxFiles(3)],
     false,
 )
 .unwrap();
@@ -136,8 +143,8 @@ const BYTES_TO_MB: u64 = 1_048_576;
 pub struct RotatingFile {
     filename_root: String,
     active_file_path: String,
-    rotation_method: RotationCondition,
-    prune_method: PruneCondition,
+    rotation_conditions: Vec<RotationCondition>,
+    prune_conditions: Vec<PruneCondition>,
     current_file: File,
     index: FileIndexInt,
     require_newline: bool, // Should be type to avoid runtime cost?
@@ -149,11 +156,11 @@ impl RotatingFile {
     /// to be generated.
     pub fn new(
         path_str: &str,
-        rotation_method: RotationCondition,
-        prune_method: PruneCondition,
+        rotation_conditions: Vec<RotationCondition>,
+        prune_conditions: Vec<PruneCondition>,
         require_newline: bool,
     ) -> Result<Self> {
-        Self::check_options(&rotation_method, &prune_method)?;
+        Self::check_options(&rotation_conditions, &prune_conditions)?;
         // TODO: throw error if path_str (rootname) ends in digit as this will break the numbering stuff
         let (path_filename, parent) = filename_to_details(path_str)?;
         let active_file_path = format!("{}/{}{}", parent, ACTIVE_PREFIX, path_filename);
@@ -165,8 +172,8 @@ impl RotatingFile {
             .append(true)
             .open(active_file_path.clone())?;
         Ok(Self {
-            rotation_method,
-            prune_method,
+            rotation_conditions,
+            prune_conditions,
             current_file: file,
             index: current_index,
             filename_root: path_filename,
@@ -177,14 +184,19 @@ impl RotatingFile {
     }
 
     fn check_options(
-        rotation_method: &RotationCondition,
-        prune_method: &PruneCondition,
+        rotation_conditions: &Vec<RotationCondition>,
+        prune_conditions: &Vec<PruneCondition>,
     ) -> Result<()> {
-        if let RotationCondition::SizeMB(0) = rotation_method {
-            bail!("Invalid rotation option RotationOption::SizeMB(0)");
+        // TODO: collect all errors at once to stop piecemeal error reporting, which I loathe
+        for r_condition in rotation_conditions {
+            if let RotationCondition::SizeMB(0) = r_condition {
+                bail!("Invalid rotation option RotationOption::SizeMB(0)");
+            }
         }
-        if let PruneCondition::MaxFiles(0) = prune_method {
-            bail!("Invalid prune method PruneMethod::MaxFiles(0)");
+        for p_condition in prune_conditions {
+            if let PruneCondition::MaxFiles(0) = p_condition {
+                bail!("Invalid prune method PruneMethod::MaxFiles(0)");
+            }
         }
         Ok(())
     }
@@ -254,52 +266,58 @@ impl RotatingFile {
     /// NOTE: this currently does no check to see if the file rotation option has changed for a given set of logs, but this will never result in dataloss
     /// just maybe some confusingly-sized logs
     fn rotation_required(&mut self) -> Result<bool, std::io::Error> {
-        let rotate = match self.rotation_method {
-            RotationCondition::None => false,
-            RotationCondition::SizeMB(size) => self.file_metadata()?.len() > size * BYTES_TO_MB,
-            // RotationOption::SizeLines(len) => false,
-            RotationCondition::Duration(duration) => {
-                match self.file_metadata()?.created()?.elapsed() {
-                    Ok(elapsed) => elapsed > duration,
-                    Err(e) => {
-                        println!("Warning: failed to determine time since log file created, got error {}. Rotating anyway as a precaution.", e);
-                        true
+        // Loop over all rotation conditions given and if ANY are met, we rotate
+        for condition in &self.rotation_conditions {
+            let sub_result = match condition {
+                RotationCondition::None => false,
+                RotationCondition::SizeMB(size) => self.file_metadata()?.len() > size * BYTES_TO_MB,
+                RotationCondition::Duration(duration) => {
+                    match self.file_metadata()?.created()?.elapsed() {
+                        Ok(elapsed) => elapsed > *duration,
+                        Err(e) => {
+                            println!("Warning: failed to determine time since log file created, got error {}. Rotating anyway as a precaution.", e);
+                            true
+                        }
                     }
                 }
+            };
+            if sub_result {
+                return Ok(true);
             }
-        };
-        Ok(rotate)
+        }
+        Ok(false)
     }
 
     fn prune_logs(&mut self) -> Result<(), std::io::Error> {
         // TODO: tidy this horribleness and seek out corner cases
         let log_file_list = Self::list_log_files(&self.filename_root, &self.parent)?;
-
-        match self.prune_method {
-            PruneCondition::None => {}
-            PruneCondition::MaxAge(d) => {
-                let modified_cutoff = SystemTime::now() - d;
-                for filename in log_file_list {
-                    let path = format!("{}/{}", self.parent, filename);
-                    let metadata = fs::metadata(&path)?;
-                    if metadata.modified()? < modified_cutoff {
-                        remove_file(path)?;
-                    }
-                }
-            }
-            PruneCondition::MaxFiles(n) => {
-                let index_u = self.index as usize;
-                // This works but I hate it; juggling usize stuff
-                if log_file_list.len() > n - 1 && index_u + 2 > 1 + n {
-                    for i in 1..index_u - n + 2 {
-                        let file_to_delete = &format!("{}.{}", self.filename_root, i);
-                        if log_file_list.contains(file_to_delete) {
-                            remove_file(format!("{}/{}", self.parent, file_to_delete))?;
+        for condition in &self.prune_conditions {
+            match condition {
+                PruneCondition::None => {}
+                PruneCondition::MaxAge(d) => {
+                    let modified_cutoff = SystemTime::now() - *d;
+                    for filename in &log_file_list {
+                        let path = format!("{}/{}", self.parent, filename);
+                        let metadata = fs::metadata(&path)?;
+                        if metadata.modified()? < modified_cutoff {
+                            remove_file(path)?;
                         }
                     }
                 }
-            }
-        };
+                PruneCondition::MaxFiles(n) => {
+                    let index_u = self.index as usize;
+                    // This works but I hate it; juggling usize stuff
+                    if log_file_list.len() > n - 1 && index_u + 2 > 1 + n {
+                        for i in 1..index_u - n + 2 {
+                            let file_to_delete = &format!("{}.{}", self.filename_root, i);
+                            if log_file_list.contains(file_to_delete) {
+                                remove_file(format!("{}/{}", self.parent, file_to_delete))?;
+                            }
+                        }
+                    }
+                }
+            };
+        }
         Ok(())
     }
 
