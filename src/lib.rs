@@ -136,8 +136,8 @@ const BYTES_TO_MB: u64 = 1_048_576;
 pub struct RotatingFile {
     filename_root: String,
     active_file_path: String,
-    rotation_method: RotationMethod,
-    prune_method: PruneMethod,
+    rotation_method: RotationCondition,
+    prune_method: PruneCondition,
     current_file: File,
     index: FileIndexInt,
     require_newline: bool, // Should be type to avoid runtime cost?
@@ -149,8 +149,8 @@ impl RotatingFile {
     /// to be generated.
     pub fn new(
         path_str: &str,
-        rotation_method: RotationMethod,
-        prune_method: PruneMethod,
+        rotation_method: RotationCondition,
+        prune_method: PruneCondition,
         require_newline: bool,
     ) -> Result<Self> {
         Self::check_options(&rotation_method, &prune_method)?;
@@ -176,11 +176,14 @@ impl RotatingFile {
         })
     }
 
-    fn check_options(rotation_method: &RotationMethod, prune_method: &PruneMethod) -> Result<()> {
-        if let RotationMethod::SizeMB(0) = rotation_method {
+    fn check_options(
+        rotation_method: &RotationCondition,
+        prune_method: &PruneCondition,
+    ) -> Result<()> {
+        if let RotationCondition::SizeMB(0) = rotation_method {
             bail!("Invalid rotation option RotationOption::SizeMB(0)");
         }
-        if let PruneMethod::MaxFiles(0) = prune_method {
+        if let PruneCondition::MaxFiles(0) = prune_method {
             bail!("Invalid prune method PruneMethod::MaxFiles(0)");
         }
         Ok(())
@@ -252,10 +255,10 @@ impl RotatingFile {
     /// just maybe some confusingly-sized logs
     fn rotation_required(&mut self) -> Result<bool, std::io::Error> {
         let rotate = match self.rotation_method {
-            RotationMethod::None => false,
-            RotationMethod::SizeMB(size) => self.file_metadata()?.len() > size * BYTES_TO_MB,
+            RotationCondition::None => false,
+            RotationCondition::SizeMB(size) => self.file_metadata()?.len() > size * BYTES_TO_MB,
             // RotationOption::SizeLines(len) => false,
-            RotationMethod::Duration(duration) => {
+            RotationCondition::Duration(duration) => {
                 match self.file_metadata()?.created()?.elapsed() {
                     Ok(elapsed) => elapsed > duration,
                     Err(e) => {
@@ -273,8 +276,8 @@ impl RotatingFile {
         let log_file_list = Self::list_log_files(&self.filename_root, &self.parent)?;
 
         match self.prune_method {
-            PruneMethod::None => {}
-            PruneMethod::MaxAge(d) => {
+            PruneCondition::None => {}
+            PruneCondition::MaxAge(d) => {
                 let modified_cutoff = SystemTime::now() - d;
                 for filename in log_file_list {
                     let path = format!("{}/{}", self.parent, filename);
@@ -284,7 +287,7 @@ impl RotatingFile {
                     }
                 }
             }
-            PruneMethod::MaxFiles(n) => {
+            PruneCondition::MaxFiles(n) => {
                 let index_u = self.index as usize;
                 // This works but I hate it; juggling usize stuff
                 if log_file_list.len() > n - 1 && index_u + 2 > 1 + n {
@@ -342,7 +345,7 @@ impl io::Write for RotatingFile {
 
 /// Enum for possible file rotation options.
 #[derive(Debug)]
-pub enum RotationMethod {
+pub enum RotationCondition {
     None,
     SizeMB(u64),
     Duration(Duration),
@@ -350,7 +353,7 @@ pub enum RotationMethod {
 }
 /// Enum for possible file prune options.
 #[derive(Debug)]
-pub enum PruneMethod {
+pub enum PruneCondition {
     None,
     MaxFiles(usize),
     MaxAge(Duration),
