@@ -120,7 +120,7 @@ use std::fs::remove_file;
 use std::time::SystemTime;
 use std::{cmp, fs};
 use std::{
-    fs::{File, Metadata, OpenOptions},
+    fs::{File, OpenOptions},
     io,
     time::Duration,
 };
@@ -148,6 +148,7 @@ pub struct RotatingFile {
     index: FileIndexInt,
     require_newline: bool, // Should be type to avoid runtime cost?
     parent: String,
+    file_regex: Regex,
 }
 
 impl RotatingFile {
@@ -162,10 +163,17 @@ impl RotatingFile {
         Self::check_options(&rotation_method, &prune_method)?;
         // TODO: throw error if path_str (rootname) ends in digit as this will break the numbering stuff
         let (path_filename, parent) = filename_to_details(path_str)?;
+        let file_regex = Regex::new(&format!(r"^{}.[0-9]+$", path_filename)).map_err(|e| {
+            // Thanks I hate it.
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Regex failed with error {}", e),
+            )
+        })?;
+
         let active_file_name = active_filename(&path_filename);
         let active_file_path = format!("{}/{}", parent, &active_file_name);
-        let current_index = Self::detect_latest_file_index(&path_filename, &parent)?;
-
+        let current_index = Self::detect_latest_file_index(&file_regex, &parent)?;
         let file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -181,6 +189,7 @@ impl RotatingFile {
             active_file_path,
             active_file_name,
             parent,
+            file_regex,
         })
     }
 
@@ -201,24 +210,18 @@ impl RotatingFile {
     /// Given a filename stem and folder path, list all files which are the `filename.<index>` (where filename includes the extension).
     /// Uses regex to match on `r"^<filename>.[0-9]+$"`
     fn list_rotated_log_files(
-        filename: &str,
+        file_regex: &Regex,
         folder_path: &str,
     ) -> Result<Vec<String>, std::io::Error> {
         // This will exclude active files.
-        let re = Regex::new(&format!(r"^{}.[0-9]+$", filename)).map_err(|e| {
-            // Thanks I hate it.
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Regex failed with error {}", e),
-            )
-        })?;
+
         let files = fs::read_dir(&folder_path)?;
 
         let mut log_files = vec![];
         for f in files {
             let filename_str = safe_unwrap_osstr(&f?.file_name())?;
             // if filename_str.contains(filename) {
-            if re.is_match(&filename_str) {
+            if file_regex.is_match(&filename_str) {
                 log_files.push(filename_str);
             }
         }
@@ -231,8 +234,8 @@ impl RotatingFile {
         self.index
     }
     /// Given a filename stem and folder path find the highest index so where know where to pick up after we left off in a previous incarnation
-    fn detect_latest_file_index(filename: &str, folder_path: &str) -> Result<FileIndexInt> {
-        let log_files = Self::list_rotated_log_files(filename, folder_path)?;
+    fn detect_latest_file_index(file_regex: &Regex, folder_path: &str) -> Result<FileIndexInt> {
+        let log_files = Self::list_rotated_log_files(file_regex, folder_path)?;
         let mut max_index = 0;
         for filename_string in log_files {
             let i = Self::rotated_file_index(&filename_string)?;
@@ -251,12 +254,15 @@ impl RotatingFile {
     }
 
     /// Perform file rotation
-    fn rotate_current_file(&mut self) -> () {
+    fn rotate_current_file(&mut self) {
         // TODO: think about if we want to be more careful here, i.e. append to a random file which may already exist and be a totally different format?
         // Could throw an exception, or print a warning and skip that file index. Who logs the loggers...
 
         // TODO: fix naughtyness of renaming file while handle still open, should prob be an option which we take and shutdown
         let mut result = || -> Result<(), std::io::Error> {
+            // fsync before rotation
+            self.current_file.sync_all()?;
+
             let new_file = &format!("{}/{}.{}", self.parent, self.filename_root, self.index + 1);
             fs::rename(&self.active_file_path, new_file)?;
 
@@ -276,33 +282,46 @@ impl RotatingFile {
                 "WARN: turnstiles caught error in rotate_current_file(), will attempt to continue writing to current file.\nErr: {}",
                 e
             );
-        }
+        };
     }
 
     /// Given the RotationCondition chosen when the struct was created, check if a rotation is in order
     /// NOTE: this currently does no check to see if the file rotation option has changed for a given set of logs, but this will never result in dataloss
     /// just maybe some confusingly-sized logs
     fn rotation_required(&mut self) -> Result<bool, std::io::Error> {
-        let rotate = match self.rotation_method {
-            RotationCondition::None => false,
-            RotationCondition::SizeMB(size) => self.file_metadata()?.len() > size * BYTES_TO_MB,
-            // RotationCondition::SizeLines(len) => false,
-            RotationCondition::Duration(duration) => {
-                match self.file_metadata()?.created()?.elapsed() {
-                    Ok(elapsed) => elapsed > duration,
-                    Err(e) => {
-                        println!("Warning: failed to determine time since log file created - not rotating, got error {}.", e);
-                        false
+        // NOTE: we used to fsync before getting metadata for this but was removed as veeery slow, seems reasonable?
+        // Now we juts explicitly fsync before rotation
+        let result = || -> Result<bool, std::io::Error> {
+            let rotate = match self.rotation_method {
+                RotationCondition::None => false,
+                RotationCondition::SizeMB(size) => {
+                    self.current_file.metadata()?.len() > size * BYTES_TO_MB
+                }
+                // RotationCondition::SizeLines(len) => false,
+                RotationCondition::Duration(duration) => {
+                    match self.current_file.metadata()?.created()?.elapsed() {
+                        Ok(elapsed) => elapsed > duration,
+                        Err(e) => {
+                            println!("Warning: failed to determine time since log file created - not rotating, got error {}.", e);
+                            false
+                        }
                     }
                 }
-            }
+            };
+            Ok(rotate)
         };
-        Ok(rotate)
+        match result() {
+            Ok(r) => Ok(r),
+            Err(e) => {
+                println!("WARN: turnstiles caught error in rotation_required(), defaulting to not rotating.\nErr: {}",e);
+                Ok(false)
+            }
+        }
     }
 
     fn prune_logs(&mut self) -> Result<(), std::io::Error> {
         // TODO: tidy this horribleness and seek out corner cases
-        let log_file_list = Self::list_rotated_log_files(&self.filename_root, &self.parent)?;
+        let log_file_list = Self::list_rotated_log_files(&self.file_regex, &self.parent)?;
 
         match self.prune_method {
             PruneCondition::None => {}
@@ -332,11 +351,6 @@ impl RotatingFile {
         Ok(())
     }
 
-    fn file_metadata(&self) -> Result<Metadata, std::io::Error> {
-        self.current_file.sync_all()?;
-        self.current_file.metadata()
-    }
-
     pub fn current_file(&self) -> &File {
         &self.current_file
     }
@@ -353,14 +367,6 @@ impl RotatingFile {
 impl io::Write for RotatingFile {
     fn write(&mut self, bytes: &[u8]) -> Result<usize, std::io::Error> {
         // Note: to ensure no loss of info we require that the only thing that can return an error from here is the write itself
-
-        // let rotation_required = match self.rotation_required() {
-        //     Ok(r) => r,
-        //     Err(e) => {
-        //         println!("WARN: turnstiles caught error in rotation_required(), defaulting to not rotating.\nErr: {}",e);
-        //         false
-        //     }
-        // };
 
         if !self.require_newline {
             if self.rotation_required()? {
