@@ -235,42 +235,48 @@ impl RotatingFile {
         let log_files = Self::list_rotated_log_files(filename, folder_path)?;
         let mut max_index = 0;
         for filename_string in log_files {
-            // if filename_string == active_filename(filename) || filename_string == filename
-            // // 2nd condition prevents backwards-incompat-induced panics where we have the old test.log file and it tries to get an int from it
-            // {
-            //     continue;
-            // } else {
-            let file_index = match filename_string.split('.').last() {
-                None => bail!("Found log file ending in '.', can't process index."),
-                Some(s) => s,
-            };
-
-            let i = file_index.parse::<FileIndexInt>()?;
+            let i = Self::rotated_file_index(&filename_string)?;
             max_index = cmp::max(i, max_index);
         }
-        // }
+
         Ok(max_index)
     }
 
+    fn rotated_file_index(filename: &str) -> Result<FileIndexInt> {
+        let file_index = match filename.split('.').last() {
+            None => bail!("Found log file ending in '.', can't process index."),
+            Some(s) => s,
+        };
+        Ok(file_index.parse::<FileIndexInt>()?)
+    }
+
     /// Perform file rotation
-    fn rotate_current_file(&mut self) -> Result<(), std::io::Error> {
+    fn rotate_current_file(&mut self) -> () {
         // TODO: think about if we want to be more careful here, i.e. append to a random file which may already exist and be a totally different format?
         // Could throw an exception, or print a warning and skip that file index. Who logs the loggers...
 
         // TODO: fix naughtyness of renaming file while handle still open, should prob be an option which we take and shutdown
-        let new_file = &format!("{}/{}.{}", self.parent, self.filename_root, self.index + 1);
-        fs::rename(&self.active_file_path, new_file)?;
+        let mut result = || -> Result<(), std::io::Error> {
+            let new_file = &format!("{}/{}.{}", self.parent, self.filename_root, self.index + 1);
+            fs::rename(&self.active_file_path, new_file)?;
 
-        self.current_file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .append(true)
-            .open(&self.active_file_path)?;
-        self.index += 1; // Only do this once the above results have passed.
+            self.current_file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(true)
+                .open(&self.active_file_path)?;
+            self.index += 1; // Only do this once the above results have passed.
 
-        // TODO: Goes here or in write?
-        self.prune_logs()?;
-        Ok(())
+            // TODO: Goes here or in write?
+            self.prune_logs()?;
+            Ok(())
+        };
+        if let Err(e) = result() {
+            println!(
+                "WARN: turnstiles caught error in rotate_current_file(), will attempt to continue writing to current file.\nErr: {}",
+                e
+            );
+        }
     }
 
     /// Given the RotationCondition chosen when the struct was created, check if a rotation is in order
@@ -285,8 +291,8 @@ impl RotatingFile {
                 match self.file_metadata()?.created()?.elapsed() {
                     Ok(elapsed) => elapsed > duration,
                     Err(e) => {
-                        println!("Warning: failed to determine time since log file created, got error {}. Rotating anyway as a precaution.", e);
-                        true
+                        println!("Warning: failed to determine time since log file created - not rotating, got error {}.", e);
+                        false
                     }
                 }
             }
@@ -346,15 +352,25 @@ impl RotatingFile {
 
 impl io::Write for RotatingFile {
     fn write(&mut self, bytes: &[u8]) -> Result<usize, std::io::Error> {
+        // Note: to ensure no loss of info we require that the only thing that can return an error from here is the write itself
+
+        // let rotation_required = match self.rotation_required() {
+        //     Ok(r) => r,
+        //     Err(e) => {
+        //         println!("WARN: turnstiles caught error in rotation_required(), defaulting to not rotating.\nErr: {}",e);
+        //         false
+        //     }
+        // };
+
         if !self.require_newline {
             if self.rotation_required()? {
-                self.rotate_current_file()?;
+                self.rotate_current_file();
             }
         } else if let Some(last_char) = bytes.last() {
             // Note this will prevent writing just a newline and so could break some stuff
             // TODO: be smarter here in future, not sure how best to distinguish between genuine newline write and broken up log from slog async
             if *last_char == b'\n' && self.rotation_required()? {
-                self.rotate_current_file()?;
+                self.rotate_current_file();
                 if bytes.len() != 1 {
                     self.current_file.write_all(bytes)?;
                 }
