@@ -138,26 +138,26 @@ fn test_no_dir_simple() {
     file.write_all(&data).unwrap();
 }
 
-// #[test]
-// #[should_panic]
-// /// Delete directory after initial write, should fail to write again
-// fn test_no_dir_intermediate() {
-//     let dir = TempDir::new();
-//     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+#[test]
+#[should_panic]
+/// Delete directory after initial write, should fail to rotate
+fn test_no_dir_intermediate() {
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
 
-//     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
-//     let mut file = RotatingFile::new(
-//         path,
-//         RotationCondition::Duration(Duration::from_millis(100)),
-//         PruneCondition::None,
-//         false,
-//     )
-//     .unwrap();
-//     file.write_all(&data).unwrap();
-//     sleep(Duration::from_millis(200));
-//     drop(dir);
-//     file.write_all(&data).unwrap();
-// }
+    let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
+    let mut file = RotatingFile::new(
+        path,
+        RotationCondition::Duration(Duration::from_millis(100)),
+        PruneCondition::None,
+        false,
+    )
+    .unwrap();
+    file.write_all(&data).unwrap();
+    sleep(Duration::from_millis(200));
+    drop(dir);
+    file.write_all(&data).unwrap();
+}
 
 #[test]
 fn test_data_integrity() {

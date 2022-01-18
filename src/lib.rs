@@ -213,14 +213,11 @@ impl RotatingFile {
         file_regex: &Regex,
         folder_path: &str,
     ) -> Result<Vec<String>, std::io::Error> {
-        // This will exclude active files.
-
         let files = fs::read_dir(&folder_path)?;
 
         let mut log_files = vec![];
         for f in files {
             let filename_str = safe_unwrap_osstr(&f?.file_name())?;
-            // if filename_str.contains(filename) {
             if file_regex.is_match(&filename_str) {
                 log_files.push(filename_str);
             }
@@ -335,6 +332,7 @@ impl RotatingFile {
                 PruneCondition::MaxFiles(n) => {
                     let index_u = self.index as usize;
                     // This works but I hate it; juggling usize stuff
+                    // TODO: invert search to make more performant
                     if log_file_list.len() > n - 1 && index_u + 2 > 1 + n {
                         for i in 1..index_u - n + 2 {
                             let file_to_delete = &format!("{}.{}", self.filename_root, i);
