@@ -368,7 +368,8 @@ impl RotatingFile {
 
 impl io::Write for RotatingFile {
     fn write(&mut self, bytes: &[u8]) -> Result<usize, std::io::Error> {
-        // Note: to ensure no loss of info we require that the only thing that can return an error from here is the write itself
+        // Note: only the rotate and write methods here can return errors, the errors in prune and rotation_required are suppressed to try ensure max uptime of logging
+        // If rotation_required() fails it will return false so the current file will continue to be written to (or at least, attempted)
 
         if !self.require_newline {
             if self.rotation_required() {
