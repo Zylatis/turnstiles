@@ -205,7 +205,13 @@ impl RotatingFile {
         folder_path: &str,
     ) -> Result<Vec<String>, std::io::Error> {
         // This will exclude active files.
-        let re = Regex::new(&format!(r"^{}.[0-9]+$", filename)).unwrap();
+        let re = Regex::new(&format!(r"^{}.[0-9]+$", filename)).map_err(|e| {
+            // Thanks I hate it.
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Regex failed with error {}", e),
+            )
+        })?;
         let files = fs::read_dir(&folder_path)?;
 
         let mut log_files = vec![];
