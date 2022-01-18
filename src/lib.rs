@@ -288,7 +288,7 @@ impl RotatingFile {
     /// Given the RotationCondition chosen when the struct was created, check if a rotation is in order
     /// NOTE: this currently does no check to see if the file rotation option has changed for a given set of logs, but this will never result in dataloss
     /// just maybe some confusingly-sized logs
-    fn rotation_required(&mut self) -> Result<bool, std::io::Error> {
+    fn rotation_required(&mut self) -> bool {
         // NOTE: we used to fsync before getting metadata for this but was removed as veeery slow, seems reasonable?
         // Now we juts explicitly fsync before rotation
         let result = || -> Result<bool, std::io::Error> {
@@ -311,10 +311,10 @@ impl RotatingFile {
             Ok(rotate)
         };
         match result() {
-            Ok(r) => Ok(r),
+            Ok(r) => r,
             Err(e) => {
                 println!("WARN: turnstiles caught error in rotation_required(), defaulting to not rotating.\nErr: {}",e);
-                Ok(false)
+                false
             }
         }
     }
@@ -369,13 +369,13 @@ impl io::Write for RotatingFile {
         // Note: to ensure no loss of info we require that the only thing that can return an error from here is the write itself
 
         if !self.require_newline {
-            if self.rotation_required()? {
+            if self.rotation_required() {
                 self.rotate_current_file();
             }
         } else if let Some(last_char) = bytes.last() {
             // Note this will prevent writing just a newline and so could break some stuff
             // TODO: be smarter here in future, not sure how best to distinguish between genuine newline write and broken up log from slog async
-            if *last_char == b'\n' && self.rotation_required()? {
+            if *last_char == b'\n' && self.rotation_required() {
                 self.rotate_current_file();
                 if bytes.len() != 1 {
                     self.current_file.write_all(bytes)?;
