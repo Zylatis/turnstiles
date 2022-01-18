@@ -254,35 +254,32 @@ impl RotatingFile {
     }
 
     /// Perform file rotation
-    fn rotate_current_file(&mut self) {
+    fn rotate_current_file(&mut self) -> Result<(), std::io::Error> {
         // TODO: think about if we want to be more careful here, i.e. append to a random file which may already exist and be a totally different format?
         // Could throw an exception, or print a warning and skip that file index. Who logs the loggers...
 
         // TODO: fix naughtyness of renaming file while handle still open, should prob be an option which we take and shutdown
-        let mut result = || -> Result<(), std::io::Error> {
-            // fsync before rotation
-            self.current_file.sync_all()?;
+        // let mut result = || -> Result<(), std::io::Error> {
+        // fsync before rotation
+        self.current_file.sync_all()?;
 
-            let new_file = &format!("{}/{}.{}", self.parent, self.filename_root, self.index + 1);
-            fs::rename(&self.active_file_path, new_file)?;
+        let new_file = &format!("{}/{}.{}", self.parent, self.filename_root, self.index + 1);
+        fs::rename(&self.active_file_path, new_file)?;
+        self.current_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(&self.active_file_path)?;
+        self.index += 1; // Only do this once the above results have passed.
 
-            self.current_file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .append(true)
-                .open(&self.active_file_path)?;
-            self.index += 1; // Only do this once the above results have passed.
-
-            // TODO: Goes here or in write?
-            self.prune_logs()?;
-            Ok(())
-        };
-        if let Err(e) = result() {
-            println!(
-                "WARN: turnstiles caught error in rotate_current_file(), will attempt to continue writing to current file.\nErr: {}",
-                e
-            );
-        };
+        Ok(())
+        // };
+        // if let Err(e) = result() {
+        //     println!(
+        //         "WARN: turnstiles caught error in rotate_current_file(), will attempt to continue writing to current file.\nErr: {}",
+        //         e
+        //     );
+        // };
     }
 
     /// Given the RotationCondition chosen when the struct was created, check if a rotation is in order
@@ -302,7 +299,7 @@ impl RotatingFile {
                     match self.current_file.metadata()?.created()?.elapsed() {
                         Ok(elapsed) => elapsed > duration,
                         Err(e) => {
-                            println!("Warning: failed to determine time since log file created - not rotating, got error {}.", e);
+                            println!("WARN: failed to determine time since log file created - not rotating, got error {}.", e);
                             false
                         }
                     }
@@ -319,36 +316,43 @@ impl RotatingFile {
         }
     }
 
-    fn prune_logs(&mut self) -> Result<(), std::io::Error> {
+    fn prune_logs(&mut self) {
         // TODO: tidy this horribleness and seek out corner cases
-        let log_file_list = Self::list_rotated_log_files(&self.file_regex, &self.parent)?;
-
-        match self.prune_method {
-            PruneCondition::None => {}
-            PruneCondition::MaxAge(d) => {
-                let modified_cutoff = SystemTime::now() - d;
-                for filename in log_file_list {
-                    let path = format!("{}/{}", self.parent, filename);
-                    let metadata = fs::metadata(&path)?;
-                    if metadata.modified()? < modified_cutoff {
-                        remove_file(path)?;
-                    }
-                }
-            }
-            PruneCondition::MaxFiles(n) => {
-                let index_u = self.index as usize;
-                // This works but I hate it; juggling usize stuff
-                if log_file_list.len() > n - 1 && index_u + 2 > 1 + n {
-                    for i in 1..index_u - n + 2 {
-                        let file_to_delete = &format!("{}.{}", self.filename_root, i);
-                        if log_file_list.contains(file_to_delete) {
-                            remove_file(format!("{}/{}", self.parent, file_to_delete))?;
+        let result = || -> Result<(), std::io::Error> {
+            let log_file_list = Self::list_rotated_log_files(&self.file_regex, &self.parent)?;
+            match self.prune_method {
+                PruneCondition::None => {}
+                PruneCondition::MaxAge(d) => {
+                    let modified_cutoff = SystemTime::now() - d;
+                    for filename in log_file_list {
+                        let path = format!("{}/{}", self.parent, filename);
+                        let metadata = fs::metadata(&path)?;
+                        if metadata.modified()? < modified_cutoff {
+                            remove_file(path)?;
                         }
                     }
                 }
+                PruneCondition::MaxFiles(n) => {
+                    let index_u = self.index as usize;
+                    // This works but I hate it; juggling usize stuff
+                    if log_file_list.len() > n - 1 && index_u + 2 > 1 + n {
+                        for i in 1..index_u - n + 2 {
+                            let file_to_delete = &format!("{}.{}", self.filename_root, i);
+                            if log_file_list.contains(file_to_delete) {
+                                remove_file(format!("{}/{}", self.parent, file_to_delete))?;
+                            }
+                        }
+                    }
+                }
+            };
+            Ok(())
+        }();
+        match result {
+            Ok(r) => r,
+            Err(e) => {
+                println!("WARN: turnstiles caught error in prune_logs().\nErr: {}", e);
             }
-        };
-        Ok(())
+        }
     }
 
     pub fn current_file(&self) -> &File {
@@ -370,16 +374,18 @@ impl io::Write for RotatingFile {
 
         if !self.require_newline {
             if self.rotation_required() {
-                self.rotate_current_file();
+                self.rotate_current_file()?;
+                self.prune_logs();
             }
         } else if let Some(last_char) = bytes.last() {
             // Note this will prevent writing just a newline and so could break some stuff
             // TODO: be smarter here in future, not sure how best to distinguish between genuine newline write and broken up log from slog async
             if *last_char == b'\n' && self.rotation_required() {
-                self.rotate_current_file();
+                self.rotate_current_file()?;
                 if bytes.len() != 1 {
                     self.current_file.write_all(bytes)?;
                 }
+                self.prune_logs();
                 return Ok(bytes.len());
             }
         }
