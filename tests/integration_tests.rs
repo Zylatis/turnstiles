@@ -194,6 +194,63 @@ fn test_data_integrity() {
 }
 
 #[test]
+fn test_slog_json_async_data_integrity() {
+    // Write to slog async drain and also a normal file and compare data
+    use rand::Rng;
+    use serde::{Deserialize, Serialize};
+    #[derive(Serialize, Deserialize)]
+    struct JsonLog {
+        msg: String,
+        level: String,
+        ts: String,
+    }
+
+    use slog::{info, o, Drain, Logger};
+    use std::io::BufRead;
+    use std::sync::Mutex;
+
+    let dir = TempDir::new();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+
+    let log_file = RotatingFile::new(
+        path,
+        RotationCondition::Duration(Duration::from_millis(50)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
+        PruneCondition::None,
+        true,
+    )
+    .unwrap();
+
+    let log_drain = slog_json::Json::default(log_file);
+    let logger = Logger::root(Mutex::new(log_drain).fuse(), o!());
+
+    let mut rng = rand::thread_rng();
+    let mut data = HashSet::new();
+    for _ in 0..25_000 {
+        let dat = rng.gen::<i128>();
+        data.insert(format!("{}", &dat));
+    }
+
+    for dat in data.iter() {
+        info!(logger, "{:}", &dat);
+    }
+
+    // read the data back in, get the msg component, and confirm all data written
+    let mut json_data = HashSet::new();
+    let log_files = get_dir_files_hashset(&dir.path);
+    for filename in log_files {
+        let file = std::fs::File::open(format!("{}/{}", &dir.path, filename)).unwrap();
+        let data = std::io::BufReader::new(file).lines();
+        for line in data {
+            let row_data: JsonLog = serde_json::from_str(&line.unwrap()).unwrap();
+            json_data.insert(row_data.msg);
+        }
+    }
+    // XOR the two sets (almost certainly a better way - retain mutates tho?)
+    assert!(json_data.iter().filter(|x| !data.contains(*x)).count() == 0);
+    assert!(data.iter().filter(|x| !json_data.contains(*x)).count() == 0);
+}
+
+#[test]
 fn test_restart() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
@@ -333,58 +390,6 @@ fn test_slog_json_async_binary_fail() {
             assert!(line.unwrap().ends_with('}'));
         }
     }
-}
-
-#[test]
-fn test_slog_json_async_data_integrity() {
-    // Ensure if we write a bunch of stuff to disk we get all the data back, no gaps etc
-    use serde::{Deserialize, Serialize};
-    // Check that passing the 'expect_newline' works when we're writing with slog json which writes asynchronously
-    #[derive(Serialize, Deserialize)]
-    struct JsonLog {
-        msg: String,
-        level: String,
-        ts: String,
-    }
-
-    use slog::{info, o, Drain, Logger};
-    use std::io::BufRead;
-    use std::sync::Mutex;
-
-    let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
-
-    let log_file = RotatingFile::new(
-        path,
-        RotationCondition::Duration(Duration::from_millis(5)), // any shorter than this and we run the risk of OS i/o stuff getting in the way :/
-        PruneCondition::None,
-        true,
-    )
-    .unwrap();
-
-    let log_drain = slog_json::Json::default(log_file);
-    let logger = Logger::root(Mutex::new(log_drain).fuse(), o!());
-
-    let mut data = HashSet::new();
-    let n = 100;
-    for i in 0..1000 {
-        let row: Vec<u32> = (n * i..n + n * i).collect();
-        info!(logger, "{:?}", &row);
-        data.insert(format!("{:?}", &row));
-    }
-    // read the data back in, get the msg component, and confirm all data written
-    let mut json_data = HashSet::new();
-    for filename in get_dir_files_hashset(&dir.path) {
-        let file = std::fs::File::open(format!("{}/{}", &dir.path, filename)).unwrap();
-        let data = std::io::BufReader::new(file).lines();
-        for line in data {
-            let row_data: JsonLog = serde_json::from_str(&line.unwrap()).unwrap();
-            json_data.insert(row_data.msg);
-        }
-    }
-    // XOR the two sets (almost certainly a better way - retain mutates tho?)
-    assert!(json_data.iter().filter(|x| !data.contains(*x)).count() == 0);
-    assert!(data.iter().filter(|x| !json_data.contains(*x)).count() == 0);
 }
 
 #[test]

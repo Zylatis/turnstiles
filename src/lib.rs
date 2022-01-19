@@ -116,11 +116,10 @@ for i in 1..4 {
 
 */
 use anyhow::{bail, Result};
-use std::fs::remove_file;
 use std::time::SystemTime;
-use std::{cmp, fs};
 use std::{
-    fs::{File, OpenOptions},
+    cmp,
+    fs::{self, remove_file, File, OpenOptions},
     io,
     time::Duration,
 };
