@@ -416,6 +416,41 @@ fn test_file_number_prune() {
 }
 
 #[test]
+fn test_file_number_prune_interrupt() {
+    let dir = TempDir::new();
+    // let x = "temp".to_string();
+    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let data: Vec<u8> = vec![0; 990_000];
+    let mut file = RotatingFile::new(
+        path,
+        RotationCondition::SizeMB(1),
+        PruneCondition::MaxFiles(3),
+        false,
+    )
+    .unwrap();
+
+    for _ in 0..10 {
+        file.write_all(&data).unwrap();
+    }
+    let files = fs::read_dir(&dir.path).unwrap();
+    for f in files {
+        let filename_str = f.unwrap().file_name();
+        let file = filename_str.to_str().unwrap();
+        if file != "test.log.ACTIVE" {
+            dbg!(format!("{}/{}", dir.path, file));
+            fs::remove_file(format!("{}/{}", dir.path, file)).unwrap();
+        }
+    }
+    for _ in 0..10 {
+        file.write_all(&data).unwrap();
+    }
+    assert_correct_files(
+        &dir.path,
+        vec![file.current_file_name_str(), "test.log.8", "test.log.9"],
+    );
+}
+
+#[test]
 fn test_file_age_prune() {
     let dir = TempDir::new();
     let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
