@@ -20,64 +20,21 @@ There are also three options to prune old logs:
 This is currently in active development and may change/break often. Every effort will be taken to ensure that breaking changes that occur are reflected in a change of at least the minor version of the package, both in terms of the API and the generation of log files. Versions prior to 0.2.0 were so riddled with bugs I'm amazed I managed to put my pants on on those days I was writing it.
 
 ## Note:
-Rotation works by keeping track of the 'active' file, the one currently being written to, which upon rotation is renamed to include the next log file index. For example when there is only one log file it will be `test.log.ACTIVE`, which when rotated will get renamed to `test.log.1` and the `test.log.ACTIVE` will represent a new file being written to. Originally no file renaming was done to keep the surface area with the filesystem as small as possible, however this has a few disadvantages and this active-file-approach (courtesy of [flex-logger](https://docs.rs/flexi_logger/latest/flexi_logger/)) was seen as a good compromise. The downside is that the file extension now superifically looks different, but it does mean all logs can be found by simply searching for `test.log*`.
+Rotation works by keeping track of the 'active' file, the one currently being written to, which upon rotation is renamed to include the next log file index. For example when there is only one log file it will be `test.log.ACTIVE`, which when rotated will get renamed to `test.log.1` and the `test.log.ACTIVE` will represent a new file being written to. Originally no file renaming was done to keep the surface area with the filesystem as small as possible, however this has a few disadvantages and this active-file-approach (courtesy of [flex-logger](https://docs.rs/flexi_logger/latest/flexi_logger/)) was seen as a good compromise. The downside is that the file extension now superifically looks different, but it does mean all logs can be found by simply searching for `test.log*`. 
 
+Log suffix numbers will increase with age, so the first of the rotated logs will be `test.log.1`, second will be `test.log.2` etc until `N-1` after which it will be `test.log.ACTIVE`, the current one.  
+
+## Warning:
+Little to no protection is given defend against the file indices being modified during the operation of whatever code is using this logger: when `write` is called it does not currently refresh the internal index which tracks the suffix integer, this is only done when the logger is created. Changing this is noted as future work.
+
+## Note:
+Not all internal errors are handled the same way. For example, if during the process of checking if rotation is required an error occurs, the default is to print a warning to stdout and _not_ rotate. In contrast to this, if an error occurs during the actual rotation procedure, this error is bubbled up through error handling eventually returning as a `std::io::Error` to the caller. However probable future state will outsource all error handling logic to the caller of this library rather than making assumptions.
 
 # Examples
-Rotate when a log file exceeds a certain filesize without pruning or enforcing that each line end in a newline (will probably be removed soon/set to true internally)
-
-```rust
-let data: Vec<u8> = vec![0; 500_000];
-// The `false` here is to do with require_newline and is only needed for async loggers
-let mut file = RotatingFile::new("test.log", RotationOption::SizeMB(1), PruneMethod::None, false).unwrap();
-// Write 500k to file creating test.log
-file.write(&data).unwrap();
-assert!(file.index() == 0);
-
-// Write another 500kb so test.log is 1mb
-file.write_all(&data).unwrap();
-assert!(file.index() == 0);
-
-// The check for rotation is done _before_ writing, so we don't rotate, and then write 500kb
-// so this file is ~1.5mb now, still the same file
-file.write_all(&data).unwrap();
-assert!(file.index() == 0);
-
-// Now we check if we need to rotate before writing, and it's 1.5mb > the rotation option so
-// we make a new file and  write to that
-file.write_all(&data).unwrap();
-assert!(file.index() == 1);
-
-// Now have test.log.ACTIVE and test.log.1
-```
-
-Rotate when a log file is too old (based on filesystem metadata timestamps)
-
-```rust
-let max_log_age = Duration::from_millis(100);
-let data: Vec<u8> = vec![0; 1_000_000];
-let mut file =
-    RotatingFile::new(path, RotationOption::Duration(max_log_age), PruneMethod::None, false).unwrap();
-
-assert!(file.index() == 0);
-file.write_all(&data).unwrap();
-assert!(file.index() == 0);
-file.write_all(&data).unwrap();
-assert!(file.index() == 0);
-sleep(Duration::from_millis(200));
-
-// Rotation only happens when we call .write() so index remains unchanged after this duration
-// even though it exceeds that given in the RotationOption
-assert!(file.index() == 0);
-// Bit touch and go but assuming two writes of 1mb bytes doesn't take 100ms!
-file.write_all(&data).unwrap();
-assert!(file.index() == 1);
-file.write_all(&data).unwrap();
-assert!(file.index() == 1);
-// Will now have test.log.ACTIVE and test.log.1
-```
+See docs [here](https://docs.rs/turnstiles/latest/turnstiles/) for example usage. 
 
 ## Future work
+- Refresh internal index when rotation requested, not just at logger creation
 - Be more careful around edgecases for example rotating on 1mb files and writing exactly 1mb to disk
 - More direct integration with dedicated logging libraries, i.e. `impl log::Log`.
 - Investigate integration with things like [`atomicwrites`](https://crates.io/crates/atomicwrites)
