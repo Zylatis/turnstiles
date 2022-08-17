@@ -1,10 +1,6 @@
 #![warn(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 /*!
-Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done. This works by keeping track
-of the 'active' file, the one currently being written to, which upon rotation is renamed to include the next log file index. For example when there is only one log file it will be
-`test.log.ACTIVE`, which when rotated will get renamed to `test.log.1` and the `test.log.ACTIVE` will represent a new file being written to. Originally no file renaming was done to keep
-the surface area with the filesystem as small as possible, however this has a few disadvantages and this active-file-approach (courtesy of [flex-logger](https://docs.rs/flexi_logger/latest/flexi_logger/))
-was seen as a good compromise. The downside is that the file extension now superifically looks different, but it does mean all logs can be found by simply searching for `test.log*`.
+Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done. 
 
 ## Warning
 <p style="background:rgba(255,181,77,0.16);padding:0.75em;">
