@@ -1,6 +1,6 @@
 #![warn(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 /*!
-Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done. 
+Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done.
 
 ## Warning
 <p style="background:rgba(255,181,77,0.16);padding:0.75em;">
@@ -9,11 +9,11 @@ both in terms of the API and the generation of log files. Versions prior to 0.2.
 </p>
 
 ## How it works
-Rotation works by keeping track of the 'active' file, the one currently being written to, which upon rotation is renamed to include the next log file index. For example when there is only one log file it will be `test.log.ACTIVE`, 
-which when rotated will get renamed to `test.log.1` and the `test.log.ACTIVE` will represent a new file being written to. Originally no file renaming was done to keep the surface area with the filesystem as small as possible, 
-however this has a few disadvantages and this active-file-approach (courtesy of [flex-logger](https://docs.rs/flexi_logger/latest/flexi_logger/)) was seen as a good compromise. The downside is that the file extension now superifically looks different, but it does mean all logs can be found by simply searching for `test.log*`. 
+Rotation works by keeping track of the 'active' file, the one currently being written to, which upon rotation is renamed to include the next log file index. For example when there is only one log file it will be `test.log.ACTIVE`,
+which when rotated will get renamed to `test.log.1` and the `test.log.ACTIVE` will represent a new file being written to. Originally no file renaming was done to keep the surface area with the filesystem as small as possible,
+however this has a few disadvantages and this active-file-approach (courtesy of [flex-logger](https://docs.rs/flexi_logger/latest/flexi_logger/)) was seen as a good compromise. The downside is that the file extension now superifically looks different, but it does mean all logs can be found by simply searching for `test.log*`.
 
-Log suffix numbers will increase with age, so the first of the rotated logs will be `test.log.1`, second will be `test.log.2` etc until `N-1` after which it will be `test.log.ACTIVE`, the current one.  
+Log suffix numbers will increase with age, so the first of the rotated logs will be `test.log.1`, second will be `test.log.2` etc until `N-1` after which it will be `test.log.ACTIVE`, the current one.
 
 ## Warning
 <p style="background:rgba(255,181,77,0.16);padding:0.75em;">
@@ -142,6 +142,7 @@ use std::{
 };
 mod utils;
 use regex::Regex;
+use std::marker::PhantomData;
 use utils::{filename_to_details, safe_unwrap_osstr};
 
 // TODO: template this maybe? Or just make it u128 and fugheddaboutit?
@@ -152,9 +153,17 @@ const BYTES_TO_MB: u64 = 1_048_576;
 fn active_filename(root_filename: &str) -> String {
     format!("{}{}", root_filename, ".ACTIVE")
 }
+
+pub struct SyncLog {}
+pub struct AsyncLog {}
+
+pub trait LogType {}
+impl LogType for SyncLog {}
+impl LogType for AsyncLog {}
+
 #[derive(Debug)]
 /// Struct masquerades as a file handle and is written to by whatever you like
-pub struct RotatingFile {
+pub struct RotatingFile<T: LogType> {
     filename_root: String,
     active_file_path: String,
     active_file_name: String,
@@ -162,19 +171,18 @@ pub struct RotatingFile {
     prune_method: PruneCondition,
     current_file: File,
     index: FileIndexInt,
-    require_newline: bool, // Should be type to avoid runtime cost?
+    log_type: PhantomData<T>, // Should be type to avoid runtime cost?
     parent: String,
     file_regex: Regex,
 }
 
-impl RotatingFile {
+impl<T: LogType> RotatingFile<T> {
     /// Create a new RotatingFile given a desired filename and rotation option. The filename represents the stem or root of the files
     /// to be generated.
     pub fn new(
         path_str: &str,
         rotation_method: RotationCondition,
         prune_method: PruneCondition,
-        require_newline: bool,
     ) -> Result<Self> {
         Self::check_options(&rotation_method, &prune_method)?;
         // TODO: throw error if path_str (rootname) ends in digit as this will break the numbering stuff
@@ -201,11 +209,11 @@ impl RotatingFile {
             current_file: file,
             index: current_index,
             filename_root: path_filename,
-            require_newline,
             active_file_path,
             active_file_name,
             parent,
             file_regex,
+            log_type: PhantomData,
         })
     }
 
@@ -382,17 +390,30 @@ impl RotatingFile {
     }
 }
 
-impl io::Write for RotatingFile {
+impl io::Write for RotatingFile<SyncLog> {
     fn write(&mut self, bytes: &[u8]) -> Result<usize, std::io::Error> {
         // Note: only the rotate and write methods here can return errors, the errors in prune and rotation_required are suppressed to try ensure max uptime of logging
         // If rotation_required() fails it will return false so the current file will continue to be written to (or at least, attempted)
 
-        if !self.require_newline {
-            if self.rotation_required() {
-                self.rotate_current_file()?;
-                self.prune_logs();
-            }
-        } else if let Some(last_char) = bytes.last() {
+        if self.rotation_required() {
+            self.rotate_current_file()?;
+            self.prune_logs();
+        }
+
+        self.current_file.write_all(bytes)?;
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> Result<(), std::io::Error> {
+        self.current_file.flush()
+    }
+}
+
+impl io::Write for RotatingFile<AsyncLog> {
+    fn write(&mut self, bytes: &[u8]) -> Result<usize, std::io::Error> {
+        // Note: only the rotate and write methods here can return errors, the errors in prune and rotation_required are suppressed to try ensure max uptime of logging
+        // If rotation_required() fails it will return false so the current file will continue to be written to (or at least, attempted)
+
+        if let Some(last_char) = bytes.last() {
             // Note this will prevent writing just a newline and so could break some stuff
             // TODO: be smarter here in future, not sure how best to distinguish between genuine newline write and broken up log from slog async
             if *last_char == b'\n' && self.rotation_required() {

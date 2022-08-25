@@ -330,7 +330,7 @@ fn test_slog_json_async() {
     let logger = Logger::root(Mutex::new(log_drain).fuse(), o!());
 
     let start = SystemTime::now();
-    while start.elapsed().unwrap() < Duration::from_millis(210) {
+    while start.elapsed().unwrap() < Duration::from_millis(230) {
         info!(
             logger,
             "abcd--------------------------------------------------------------"
