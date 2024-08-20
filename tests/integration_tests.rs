@@ -6,7 +6,7 @@ use turnstiles::{PruneCondition, RotatingFile, RotationCondition};
 #[test]
 fn test_file_size() {
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 500_000];
     let mut file = RotatingFile::new(
         path,
@@ -32,7 +32,7 @@ fn test_file_size() {
 #[test]
 fn test_file_size_no_rotate() {
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 1_000];
     let mut file = RotatingFile::new(
         path,
@@ -54,7 +54,7 @@ fn test_file_size_no_rotate() {
 #[test]
 fn test_file_duration() {
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
 
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
     let mut file = RotatingFile::new(
@@ -99,7 +99,7 @@ fn test_file_duration() {
 #[should_panic]
 fn test_file_duration_delay_fail() {
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
 
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
     let mut file = RotatingFile::new(
@@ -124,7 +124,7 @@ fn test_file_duration_delay_fail() {
 /// Try to write to non-existent directory, should fail
 fn test_no_dir_simple() {
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
     drop(dir);
 
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
@@ -143,7 +143,7 @@ fn test_no_dir_simple() {
 /// Delete directory after initial write, should fail to rotate
 fn test_no_dir_intermediate() {
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
 
     let data: Vec<u8> = vec!["a"; 100_000].join("").as_bytes().to_vec();
     let mut file = RotatingFile::new(
@@ -163,7 +163,7 @@ fn test_no_dir_intermediate() {
 fn test_data_integrity() {
     use std::fs;
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
 
     let mut file = RotatingFile::new(
         path,
@@ -210,7 +210,7 @@ fn test_slog_json_async_data_integrity() {
     use std::sync::Mutex;
 
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
 
     let log_file = RotatingFile::new(
         path,
@@ -253,7 +253,7 @@ fn test_slog_json_async_data_integrity() {
 #[test]
 fn test_restart() {
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 600_000];
     let mut file = RotatingFile::new(
         path,
@@ -315,7 +315,7 @@ fn test_slog_json_async() {
     use std::sync::Mutex;
     use std::time::SystemTime;
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
 
     let log_file = RotatingFile::new(
         path,
@@ -359,7 +359,7 @@ fn test_slog_json_async_binary_fail() {
     use std::sync::Mutex;
     use std::time::SystemTime;
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
     // TODO: refactor common bits of these two tests
     let log_file = RotatingFile::new(
         path,
@@ -395,7 +395,7 @@ fn test_slog_json_async_binary_fail() {
 #[test]
 fn test_file_number_prune() {
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 990_000];
     let mut file = RotatingFile::new(
         path,
@@ -419,7 +419,7 @@ fn test_file_number_prune() {
 fn test_file_number_prune_interrupt() {
     let dir = TempDir::new();
     // let x = "temp".to_string();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 990_000];
     let mut file = RotatingFile::new(
         path,
@@ -453,7 +453,7 @@ fn test_file_number_prune_interrupt() {
 #[test]
 fn test_file_age_prune() {
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
     let data: Vec<u8> = vec![0; 990_000];
     let mut file = RotatingFile::new(
         path,
@@ -475,7 +475,7 @@ fn test_file_age_prune() {
 #[test]
 fn test_invalid_options() {
     let dir = TempDir::new();
-    let path = &vec![dir.path.clone(), "test.log".to_string()].join("/");
+    let path = &[dir.path.clone(), "test.log".to_string()].join("/");
     assert!(RotatingFile::new(
         path,
         RotationCondition::SizeMB(1),
