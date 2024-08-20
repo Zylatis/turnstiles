@@ -7,7 +7,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
 jobs:
-  build:
+  clippy-and-tests:
     runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v2
