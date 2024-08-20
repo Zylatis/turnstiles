@@ -1,6 +1,6 @@
 #![warn(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 /*!
-Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done. 
+Library which defines a struct implementing the io::Write trait which will allows file rotation, if applicable, when a file write is done.
 
 ## Warning
 <p style="background:rgba(255,181,77,0.16);padding:0.75em;">
@@ -9,11 +9,11 @@ both in terms of the API and the generation of log files. Versions prior to 0.2.
 </p>
 
 ## How it works
-Rotation works by keeping track of the 'active' file, the one currently being written to, which upon rotation is renamed to include the next log file index. For example when there is only one log file it will be `test.log.ACTIVE`, 
-which when rotated will get renamed to `test.log.1` and the `test.log.ACTIVE` will represent a new file being written to. Originally no file renaming was done to keep the surface area with the filesystem as small as possible, 
-however this has a few disadvantages and this active-file-approach (courtesy of [flex-logger](https://docs.rs/flexi_logger/latest/flexi_logger/)) was seen as a good compromise. The downside is that the file extension now superifically looks different, but it does mean all logs can be found by simply searching for `test.log*`. 
+Rotation works by keeping track of the 'active' file, the one currently being written to, which upon rotation is renamed to include the next log file index. For example when there is only one log file it will be `test.log.ACTIVE`,
+which when rotated will get renamed to `test.log.1` and the `test.log.ACTIVE` will represent a new file being written to. Originally no file renaming was done to keep the surface area with the filesystem as small as possible,
+however this has a few disadvantages and this active-file-approach (courtesy of [flex-logger](https://docs.rs/flexi_logger/latest/flexi_logger/)) was seen as a good compromise. The downside is that the file extension now superifically looks different, but it does mean all logs can be found by simply searching for `test.log*`.
 
-Log suffix numbers will increase with age, so the first of the rotated logs will be `test.log.1`, second will be `test.log.2` etc until `N-1` after which it will be `test.log.ACTIVE`, the current one.  
+Log suffix numbers will increase with age, so the first of the rotated logs will be `test.log.1`, second will be `test.log.2` etc until `N-1` after which it will be `test.log.ACTIVE`, the current one.
 
 ## Warning
 <p style="background:rgba(255,181,77,0.16);padding:0.75em;">
@@ -192,7 +192,6 @@ impl RotatingFile {
         let current_index = Self::detect_latest_file_index(&file_regex, &parent)?;
         let file = OpenOptions::new()
             .create(true)
-            .write(true)
             .append(true)
             .open(active_file_path.clone())?;
         Ok(Self {
@@ -229,7 +228,7 @@ impl RotatingFile {
         file_regex: &Regex,
         folder_path: &str,
     ) -> Result<Vec<String>, std::io::Error> {
-        let files = fs::read_dir(&folder_path)?;
+        let files = fs::read_dir(folder_path)?;
 
         let mut log_files = vec![];
         for f in files {
@@ -280,7 +279,6 @@ impl RotatingFile {
         fs::rename(&self.active_file_path, new_file)?;
         self.current_file = OpenOptions::new()
             .create(true)
-            .write(true)
             .append(true)
             .open(&self.active_file_path)?;
         self.index += 1; // Only do this once the above results have passed.
